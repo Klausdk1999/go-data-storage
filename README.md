@@ -36,7 +36,7 @@ Go project to store data readings received via post request on a PostgreSQL data
     - GET /users: Retrieve all users.
         Responses: 200 OK, 500 Internal Server Error
 
-### Readings
+### Reading
 
     - POST /readings: Create a new reading.
         Body: {"user_id": 1, "value": 42.5}
