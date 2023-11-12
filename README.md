@@ -45,6 +45,6 @@ Go project to store data readings received via post request on a PostgreSQL data
     - GET /readings: Retrieve all readings.
         Responses: 200 OK, 500 Internal Server Error
 
-    - GET /user_readings?user_id={id}: Retrieve readings for a specific user.
+    - GET /readings/{user_id}: Retrieve readings for a specific user.
         URL Parameter: user_id (integer)
         Responses: 200 OK, 400 Bad Request, 500 Internal Server Error

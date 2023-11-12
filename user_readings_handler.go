@@ -5,22 +5,23 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
 )
 
 func UserReadingsHandler(w http.ResponseWriter, r *http.Request) {
-    if r.Method != "GET" {
+  if r.Method != "GET" {
         http.Error(w, "Only GET method is allowed", http.StatusMethodNotAllowed)
         return
     }
 
-    db := OpenConnection()
+    db := OpenConnection() // Ensure this function exists and properly opens a database connection
     defer db.Close()
 
-    // Extract user ID from query parameters
-    queryValues := r.URL.Query()
-    userIDStr := queryValues.Get("user_id")
-    if userIDStr == "" {
+    // Extract user ID from URL path using mux
+    vars := mux.Vars(r)
+    userIDStr, ok := vars["user_id"]
+    if !ok {
         http.Error(w, "User ID is required", http.StatusBadRequest)
         return
     }

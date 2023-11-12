@@ -3,8 +3,9 @@ package main
 import (
 	"log"
 	"net/http"
-	"github.com/rs/cors"
 
+	"github.com/rs/cors"
+    "github.com/gorilla/mux"
 	_ "github.com/lib/pq"
 )
 
@@ -18,24 +19,23 @@ const (
 )
 
 func main() {
-    mux := http.NewServeMux()
+    r := mux.NewRouter()
     
     // Register your handlers
-    mux.HandleFunc("/users", UsersHandler)
-    mux.HandleFunc("/readings", ReadingsHandler)
-    mux.HandleFunc("/user_readings", UserReadingsHandler)
+    r.HandleFunc("/users", UsersHandler)
+    r.HandleFunc("/readings", ReadingsHandler)
+    r.HandleFunc("/readings/{user_id}", UserReadingsHandler)
 
     // Setup CORS
     c := cors.New(cors.Options{
-        AllowedOrigins: []string{"http://localhost:3000"}, // Adjust this to your frontend's URL
+        AllowedOrigins: []string{"*"}, // Allow all origins for testing
         AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
         AllowedHeaders: []string{"Accept", "Content-Type", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "Authorization"},
-        // Enable Debugging for testing, consider disabling in production
-        Debug: true,
+        Debug: true, // Enable Debugging for testing, consider disabling in production
     })
 
     // Apply CORS middleware
-    handler := c.Handler(mux)
+    handler := c.Handler(r)
 
     // Start server with CORS handler
     log.Fatal(http.ListenAndServe(":8080", handler))
