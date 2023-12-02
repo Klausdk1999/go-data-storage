@@ -59,8 +59,8 @@ func createUser(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    sqlStatement := `INSERT INTO users (name) VALUES ($1)`
-    _, err = db.Exec(sqlStatement, user.Name)
+    sqlStatement := `INSERT INTO users (name, rfid) VALUES ($1, $2)`
+    _, err = db.Exec(sqlStatement, user.Name, user.Rfid)
     if err != nil {
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return

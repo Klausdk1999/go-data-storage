@@ -3,6 +3,7 @@ package main
 type User struct {
     ID       int    `json:"id"`
     Name     string `json:"name"`
+    Rfid	 int 	`json:"rfid"`
 }
 
 type Reading struct {
