@@ -20,7 +20,7 @@ func getAllUsers(w http.ResponseWriter, r *http.Request) {
     db := OpenConnection()
     defer db.Close()
 
-    rows, err := db.Query("SELECT * FROM users;")
+    rows, err := db.Query("SELECT id, name, rfid, categoria, matricula FROM users")
     if err != nil {
         http.Error(w, "Database query error", http.StatusInternalServerError)
         return

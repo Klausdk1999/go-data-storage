@@ -19,7 +19,6 @@ func GetUserByRFIDHandler(w http.ResponseWriter, r *http.Request) {
 	db := OpenConnection()
 	defer db.Close()
 
-	// Extract RFID from URL path using mux
 	vars := mux.Vars(r)
 	rfid, ok := vars["rfid"]
 	if !ok {
