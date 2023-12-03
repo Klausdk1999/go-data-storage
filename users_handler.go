@@ -20,7 +20,7 @@ func getAllUsers(w http.ResponseWriter, r *http.Request) {
     db := OpenConnection()
     defer db.Close()
 
-    rows, err := db.Query("SELECT id, name FROM users")
+    rows, err := db.Query("SELECT * FROM users")
     if err != nil {
         http.Error(w, "Database query error", http.StatusInternalServerError)
         return
@@ -59,8 +59,8 @@ func createUser(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    sqlStatement := `INSERT INTO users (name, rfid) VALUES ($1, $2)`
-    _, err = db.Exec(sqlStatement, user.Name, user.Rfid)
+    sqlStatement := `INSERT INTO users (name, rfid, categoria, matricula) VALUES ($1, $2, $3, $4)`
+    _, err = db.Exec(sqlStatement, user.Name, user.Rfid, user.Categoria, user.Matricula)
     if err != nil {
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return

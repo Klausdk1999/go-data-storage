@@ -6,18 +6,19 @@ Go project to store data readings received via post request on a PostgreSQL data
 
 - Go installed on the host
 - PostgreSQL database setup with:
-  `  CREATE TABLE users (
-      id SERIAL PRIMARY KEY,
-      name VARCHAR(255) NOT NULL
-  );
-  CREATE TABLE readings (
-      id SERIAL PRIMARY KEY,
-      user_id INT NOT NULL,
-      timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      value NUMERIC NOT NULL,
-      FOREIGN KEY (user_id) REFERENCES Users(id)
-  );
- `
+  ` CREATE TABLE users (
+     id SERIAL PRIMARY KEY,
+     name VARCHAR(255) NOT NULL
+     rfid VARCHAR(255) NOT NULL
+     categoria VARCHAR(255) NOT NULL
+ );
+ CREATE TABLE readings (
+     id SERIAL PRIMARY KEY,
+     user_id INT NOT NULL,
+     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+     value NUMERIC NOT NULL,
+     FOREIGN KEY (user_id) REFERENCES Users(id)
+ );`
 
 ## Get started:
 
