@@ -10,7 +10,7 @@ import (
 
 func OpenConnection() *sql.DB {
 	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
-		"password=%s dbname=%s sslmode=disable",
+		"password=%s dbname=%s sslmode=require", // Change sslmode to "require"
 		host, port, user, password, dbname)
 
 	db, err := sql.Open("postgres", psqlInfo)
