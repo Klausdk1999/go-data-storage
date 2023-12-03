@@ -30,7 +30,7 @@ func GetUserByRFIDHandler(w http.ResponseWriter, r *http.Request) {
 	row := db.QueryRow("SELECT id, name, categoria, matricula, rfid FROM users WHERE rfid = $1", rfid)
 	
 	var user User
-	err := row.Scan(&user.ID, &user.Name, &user.Categoria, &user.Matricula, &user.Rfid)
+	err := row.Scan(&user.ID, &user.Name, &user.Rfid, &user.Categoria, &user.Matricula)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			http.Error(w, "User not found", http.StatusNotFound)
