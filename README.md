@@ -8,8 +8,8 @@ Go project to store data readings received via post request on a PostgreSQL data
 - PostgreSQL database setup with:
   ` CREATE TABLE users (
      id SERIAL PRIMARY KEY,
-     name VARCHAR(255) NOT NULL
-     rfid VARCHAR(255) NOT NULL
+     name VARCHAR(255) NOT NULL,
+     rfid VARCHAR(255) NOT NULL,
      categoria VARCHAR(255) NOT NULL
  );
  CREATE TABLE readings (
