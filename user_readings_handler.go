@@ -15,6 +15,7 @@ func UserReadingsHandler(w http.ResponseWriter, r *http.Request) {
         http.Error(w, "Only GET method is allowed", http.StatusMethodNotAllowed)
         return
     }
+    
 
     db := OpenConnection() // Ensure this function exists and properly opens a database connection
     defer db.Close()
