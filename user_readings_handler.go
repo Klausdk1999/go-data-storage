@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/gorilla/mux"
+	"github.com/lib/pq"
 	_ "github.com/lib/pq"
 )
 
@@ -34,7 +35,8 @@ func UserReadingsHandler(w http.ResponseWriter, r *http.Request) {
     }
 
     // Query database for readings belonging to the user
-    rows, err := db.Query("SELECT id, userid, timestamp, value FROM readings WHERE user_id = $1", userID)
+
+    rows, err := db.Query("SELECT id, userid, timestamp, value, torquevalues, asmtimes, motionwastes, setvalue FROM readings WHERE user_id = $1", userID)
     if err != nil {
         http.Error(w, "Database query error", http.StatusInternalServerError)
         return
@@ -44,7 +46,8 @@ func UserReadingsHandler(w http.ResponseWriter, r *http.Request) {
  var readings []Reading
     for rows.Next() {
         var reading Reading
-        err := rows.Scan(&reading.ID, &reading.UserID, &reading.Timestamp, &reading.Value)
+
+        err := rows.Scan(&reading.ID, &reading.UserID, &reading.Timestamp, &reading.Value, pq.Array(&reading.TorqueValues), pq.Array(&reading.AsmTimes), pq.Array(&reading.MotionWastes), &reading.SetValue)
 
         if err != nil {
             http.Error(w, "Error scanning readings", http.StatusInternalServerError)
