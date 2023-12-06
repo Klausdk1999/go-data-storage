@@ -16,6 +16,7 @@ func UserReadingsHandler(w http.ResponseWriter, r *http.Request) {
         return
     }
 
+
     db := OpenConnection() // Ensure this function exists and properly opens a database connection
     defer db.Close()
 
@@ -34,6 +35,7 @@ func UserReadingsHandler(w http.ResponseWriter, r *http.Request) {
     }
 
     // Query database for readings belonging to the user
+
     rows, err := db.Query("SELECT id, userid, timestamp, value, torquevalues, asmtimes, motionwastes, setvalue FROM readings WHERE user_id = $1", userID)
     if err != nil {
         http.Error(w, "Database query error", http.StatusInternalServerError)
@@ -41,9 +43,10 @@ func UserReadingsHandler(w http.ResponseWriter, r *http.Request) {
     }
     defer rows.Close()
 
-    var readings []Reading
+ var readings []Reading
     for rows.Next() {
         var reading Reading
+
         err := rows.Scan(&reading.ID, &reading.UserID, &reading.Timestamp, &reading.Value, pq.Array(&reading.TorqueValues), pq.Array(&reading.AsmTimes), pq.Array(&reading.MotionWastes), &reading.SetValue)
 
         if err != nil {
