@@ -24,7 +24,7 @@ func getAllReadings(w http.ResponseWriter, r *http.Request) {
     db := OpenConnection()
     defer db.Close()
 
-    rows, err := db.Query("SELECT id, user_id, timestamp, value FROM readings")
+    rows, err := db.Query("SELECT id, userid, value, torquevalues, asmtimes, motionwastes, setvalue FROM readings")
     if err != nil {
         http.Error(w, "Database query error", http.StatusInternalServerError)
         return
@@ -34,7 +34,7 @@ func getAllReadings(w http.ResponseWriter, r *http.Request) {
     var readings []Reading
     for rows.Next() {
         var reading Reading
-        err := rows.Scan(&reading.ID, &reading.UserID, &reading.Timestamp, &reading.Value)
+        err := rows.Scan(reading.UserID, reading.Value, pq.Array(reading.TorqueValues), pq.Array(reading.AsmTimes), pq.Array(reading.MotionWastes), reading.SetValue)
         if err != nil {
             http.Error(w, "Error scanning readings", http.StatusInternalServerError)
             return

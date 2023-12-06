@@ -34,7 +34,7 @@ func UserReadingsHandler(w http.ResponseWriter, r *http.Request) {
     }
 
     // Query database for readings belonging to the user
-    rows, err := db.Query("SELECT id, user_id, timestamp, value, torque_values, asm_times, motion_wastes, set_value FROM readings WHERE user_id = $1", userID)
+    rows, err := db.Query("SELECT id, userid, timestamp, value, torquevalues, asmtimes, motionwastes, setvalue FROM readings WHERE user_id = $1", userID)
     if err != nil {
         http.Error(w, "Database query error", http.StatusInternalServerError)
         return
