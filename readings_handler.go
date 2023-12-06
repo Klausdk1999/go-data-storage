@@ -34,7 +34,7 @@ func getAllReadings(w http.ResponseWriter, r *http.Request) {
     var readings []Reading
     for rows.Next() {
         var reading Reading
-        err := rows.Scan(reading.UserID, reading.Value, pq.Array(reading.TorqueValues), pq.Array(reading.AsmTimes), pq.Array(reading.MotionWastes), reading.SetValue)
+        err := rows.Scan(reading.ID, reading.UserID, reading.Value, pq.Array(reading.TorqueValues), pq.Array(reading.AsmTimes), pq.Array(reading.MotionWastes), reading.SetValue)
         if err != nil {
             http.Error(w, "Error scanning readings", http.StatusInternalServerError)
             return
