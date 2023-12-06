@@ -23,7 +23,7 @@ func getAllReadings(w http.ResponseWriter, r *http.Request) {
     db := OpenConnection()
     defer db.Close()
 
-    rows, err := db.Query("SELECT id, user_id, timestamp, value FROM readings")
+    rows, err := db.Query("SELECT id, user_id, timestamp, value, torque_values, asm_times, motion_wastes, set_value FROM readings")
     if err != nil {
         http.Error(w, "Database query error", http.StatusInternalServerError)
         return
@@ -33,7 +33,7 @@ func getAllReadings(w http.ResponseWriter, r *http.Request) {
     var readings []Reading
     for rows.Next() {
         var reading Reading
-        err := rows.Scan(&reading.ID, &reading.UserID, &reading.Timestamp, &reading.Value)
+        err := rows.Scan(&reading.ID, &reading.UserID, &reading.Timestamp, &reading.Value, &reading.TorqueValues, &reading.AsmTimes, &reading.MotionWastes, &reading.SetValue)
         if err != nil {
             http.Error(w, "Error scanning readings", http.StatusInternalServerError)
             return
@@ -87,7 +87,7 @@ func getUserReadings(w http.ResponseWriter, r *http.Request) {
     }
 
     // Query database for readings belonging to the user
-    rows, err := db.Query("SELECT id, user_id, timestamp, value FROM readings WHERE user_id = $1", userID)
+    rows, err := db.Query("SELECT id, user_id, timestamp, value, torque_values, asm_times, motion_wastes, set_value FROM readings WHERE user_id = $1", userID)
     if err != nil {
         http.Error(w, "Database query error", http.StatusInternalServerError)
         return
@@ -97,7 +97,7 @@ func getUserReadings(w http.ResponseWriter, r *http.Request) {
     var readings []Reading
     for rows.Next() {
         var reading Reading
-        err := rows.Scan(&reading.ID, &reading.UserID, &reading.Timestamp, &reading.Value)
+        err := rows.Scan(&reading.ID, &reading.UserID, &reading.Timestamp, &reading.Value, &reading.TorqueValues, &reading.AsmTimes, &reading.MotionWastes, &reading.SetValue)
         if err != nil {
             http.Error(w, "Error scanning readings", http.StatusInternalServerError)
             return

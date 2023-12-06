@@ -13,12 +13,8 @@ type Reading struct {
 	UserID    int     `json:"user_id"`
 	Timestamp string  `json:"timestamp"`
 	Value     float64 `json:"value"`
-}
-
-type TorqueData struct {
-	Routine       int       `json:"[RN_001_30_3]"`
-    TorqueValues  []float32 `json:"torque_values"`
+	TorqueValues  []float64 `json:"torque_values"`
     AsmTimes      []uint    `json:"asm_times"`
     MotionWastes  []uint    `json:"motion_wastes"`
-    SetValue      float32   `json:"set_value"`
+    SetValue      float64   `json:"set_value"`
 }
