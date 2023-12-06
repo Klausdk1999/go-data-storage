@@ -16,6 +16,7 @@ func UserReadingsHandler(w http.ResponseWriter, r *http.Request) {
         return
     }
 
+
     db := OpenConnection() // Ensure this function exists and properly opens a database connection
     defer db.Close()
 
