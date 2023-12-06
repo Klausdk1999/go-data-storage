@@ -45,6 +45,8 @@ func main() {
     r.HandleFunc("/readings", ReadingsHandler)
     r.HandleFunc("/readings/{user_id}", UserReadingsHandler)
     r.HandleFunc("/users/rfid/{rfid}", GetUserByRFIDHandler)
+	r.HandleFunc("/receiveTorqueData", receiveTorqueData)
+    r.HandleFunc("/torqueData", serveTorquePage)
 
     c := cors.New(cors.Options{
         AllowedOrigins: []string{"*"},
