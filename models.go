@@ -13,4 +13,8 @@ type Reading struct {
 	UserID    int     `json:"user_id"`
 	Timestamp string  `json:"timestamp"`
 	Value     float64 `json:"value"`
+	TorqueValues  []float64 `json:"torque_values"`
+    AsmTimes      []int64    `json:"asm_times"`
+    MotionWastes  []int64    `json:"motion_wastes"`
+    SetValue      float64   `json:"set_value"`
 }
