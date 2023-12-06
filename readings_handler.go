@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -24,7 +25,7 @@ func getAllReadings(w http.ResponseWriter, r *http.Request) {
     db := OpenConnection()
     defer db.Close()
 
-    rows, err := db.Query("SELECT id, userid, timestamp, value, torquevalues, motionwastes, setvalue FROM readings")
+    rows, err := db.Query("SELECT id, userid, timestamp, value, torquevalues, motionwastes, setvalue, asmtimes FROM readings")
     if err != nil {
         http.Error(w, "Database query error", http.StatusInternalServerError)
         return
@@ -34,11 +35,11 @@ func getAllReadings(w http.ResponseWriter, r *http.Request) {
     var readings []Reading
     for rows.Next() {
         var reading Reading
-        err := rows.Scan(&reading.ID, &reading.UserID, &reading.Timestamp, &reading.Value, pq.Array(&reading.TorqueValues), pq.Array(&reading.AsmTimes), pq.Array(&reading.MotionWastes), &reading.SetValue)
+        err := rows.Scan(&reading.ID, &reading.UserID, &reading.Timestamp, &reading.Value, pq.Array(&reading.TorqueValues), pq.Array(&reading.MotionWastes), &reading.SetValue, pq.Array(&reading.AsmTimes))
 
         if err != nil {
-            http.Error(w, "Error scanning readings", http.StatusInternalServerError)
-            return
+        http.Error(w, fmt.Sprintf("Error scanning readings: %v", err), http.StatusInternalServerError)
+        return
         }
         readings = append(readings, reading)
     }
