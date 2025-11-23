@@ -1,4 +1,4 @@
-package main
+package auth
 
 import (
 	"crypto/rand"
@@ -6,15 +6,28 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"data-storage/internal/db"
+	"data-storage/internal/models"
 
 	"github.com/golang-jwt/jwt/v5"
 	"gorm.io/gorm"
 )
 
-var jwtSecret = []byte("your-secret-key-change-in-production") // TODO: Move to env var
+var jwtSecret []byte
+
+func init() {
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		secret = "your-secret-key-change-in-production"
+		log.Println("Warning: Using default JWT secret. Set JWT_SECRET environment variable in production!")
+	}
+	jwtSecret = []byte(secret)
+}
 
 type Claims struct {
 	UserID   uint   `json:"user_id"`
@@ -70,9 +83,9 @@ func ValidateJWT(tokenString string) (*Claims, error) {
 }
 
 // AuthenticateDevice validates a device auth token
-func AuthenticateDevice(authToken string) (*Device, error) {
-	var device Device
-	result := DB.Where("auth_token = ? AND is_active = ?", authToken, true).First(&device)
+func AuthenticateDevice(authToken string) (*models.Device, error) {
+	var device models.Device
+	result := db.GetDB().Where("auth_token = ? AND is_active = ?", authToken, true).First(&device)
 	if result.Error != nil {
 		return nil, result.Error
 	}

@@ -1,9 +1,12 @@
-package main
+package handlers
 
 import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+
+	"data-storage/internal/db"
+	"data-storage/internal/models"
 
 	"github.com/gorilla/mux"
 )
@@ -29,8 +32,8 @@ func UserReadingsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Query database for signal values belonging to the user
-	var signalValues []SignalValue
-	result := DB.Where("user_id = ?", uint(userID)).Preload("Signal").Preload("Signal.Device").Order("timestamp DESC").Find(&signalValues)
+	var signalValues []models.SignalValue
+	result := db.GetDB().Where("user_id = ?", uint(userID)).Preload("Signal").Preload("Signal.Device").Order("timestamp DESC").Find(&signalValues)
 	if result.Error != nil {
 		http.Error(w, "Database query error", http.StatusInternalServerError)
 		return

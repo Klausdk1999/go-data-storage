@@ -1,11 +1,10 @@
-package main
+package models
 
 import (
 	"database/sql/driver"
 	"encoding/json"
 	"time"
 
-	"github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )

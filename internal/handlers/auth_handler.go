@@ -1,10 +1,14 @@
-package main
+package handlers
 
 import (
 	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
+
+	"data-storage/internal/auth"
+	"data-storage/internal/db"
+	"data-storage/internal/models"
 )
 
 type LoginRequest struct {
@@ -13,8 +17,8 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
-	Token string `json:"token"`
-	User  User   `json:"user"`
+	Token string       `json:"token"`
+	User  models.User  `json:"user"`
 }
 
 type RegisterDeviceRequest struct {
@@ -25,8 +29,8 @@ type RegisterDeviceRequest struct {
 }
 
 type RegisterDeviceResponse struct {
-	Device    Device `json:"device"`
-	AuthToken string `json:"auth_token"`
+	Device    models.Device `json:"device"`
+	AuthToken string        `json:"auth_token"`
 }
 
 // LoginHandler handles user authentication
@@ -43,8 +47,8 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Find user by email
-	var user User
-	result := DB.Where("email = ? AND is_active = ?", req.Email, true).First(&user)
+	var user models.User
+	result := db.GetDB().Where("email = ? AND is_active = ?", req.Email, true).First(&user)
 	if result.Error != nil {
 		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 		return
@@ -57,7 +61,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate JWT token
-	token, err := GenerateJWT(user.ID, user.Email)
+	token, err := auth.GenerateJWT(user.ID, user.Email)
 	if err != nil {
 		log.Printf("Error generating JWT: %v", err)
 		http.Error(w, "Error generating token", http.StatusInternalServerError)
@@ -103,7 +107,7 @@ func RegisterDeviceHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate device auth token
-	authToken, err := GenerateDeviceToken()
+	authToken, err := auth.GenerateDeviceToken()
 	if err != nil {
 		log.Printf("Error generating device token: %v", err)
 		http.Error(w, "Error generating device token", http.StatusInternalServerError)
@@ -111,7 +115,7 @@ func RegisterDeviceHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create device
-	device := Device{
+	device := models.Device{
 		Name:        req.Name,
 		Description: req.Description,
 		DeviceType:  req.DeviceType,
@@ -121,7 +125,7 @@ func RegisterDeviceHandler(w http.ResponseWriter, r *http.Request) {
 		IsActive:    true,
 	}
 
-	result := DB.Create(&device)
+	result := db.GetDB().Create(&device)
 	if result.Error != nil {
 		log.Printf("Error creating device: %v", result.Error)
 		http.Error(w, "Error creating device", http.StatusInternalServerError)

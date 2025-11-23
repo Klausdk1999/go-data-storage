@@ -1,10 +1,14 @@
-package main
+﻿package handlers
 
 import (
 	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
+
+	"data-storage/internal/auth"
+	"data-storage/internal/db"
+	"data-storage/internal/models"
 
 	"github.com/gorilla/mux"
 	"gorm.io/gorm"
@@ -37,8 +41,8 @@ func DeviceHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getAllDevices(w http.ResponseWriter, r *http.Request) {
-	var devices []Device
-	query := DB.Preload("User")
+	var devices []models.Device
+	query := db.GetDB().Preload("User")
 
 	// Filter by user_id if provided
 	if userID := r.URL.Query().Get("user_id"); userID != "" {
@@ -76,8 +80,8 @@ func getDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var device Device
-	result := DB.Preload("User").First(&device, deviceID)
+	var device models.Device
+	result := db.GetDB().Preload("User").First(&device, deviceID)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
 			http.Error(w, "Device not found", http.StatusNotFound)
@@ -93,7 +97,7 @@ func getDevice(w http.ResponseWriter, r *http.Request) {
 }
 
 func createDevice(w http.ResponseWriter, r *http.Request) {
-	var device Device
+	var device models.Device
 	if err := json.NewDecoder(r.Body).Decode(&device); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
@@ -101,7 +105,7 @@ func createDevice(w http.ResponseWriter, r *http.Request) {
 
 	// Generate auth token if not provided
 	if device.AuthToken == "" {
-		token, err := GenerateDeviceToken()
+		token, err := auth.GenerateDeviceToken()
 		if err != nil {
 			log.Printf("Error generating device token: %v", err)
 			http.Error(w, "Error generating device token", http.StatusInternalServerError)
@@ -110,7 +114,7 @@ func createDevice(w http.ResponseWriter, r *http.Request) {
 		device.AuthToken = token
 	}
 
-	result := DB.Create(&device)
+	result := db.GetDB().Create(&device)
 	if result.Error != nil {
 		log.Printf("Error creating device: %v", result.Error)
 		http.Error(w, "Error creating device", http.StatusInternalServerError)
@@ -136,8 +140,8 @@ func updateDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var device Device
-	result := DB.First(&device, deviceID)
+	var device models.Device
+	result := db.GetDB().First(&device, deviceID)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
 			http.Error(w, "Device not found", http.StatusNotFound)
@@ -147,7 +151,7 @@ func updateDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var updateData Device
+	var updateData models.Device
 	if err := json.NewDecoder(r.Body).Decode(&updateData); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
@@ -163,7 +167,7 @@ func updateDevice(w http.ResponseWriter, r *http.Request) {
 		device.UserID = updateData.UserID
 	}
 
-	result = DB.Save(&device)
+	result = db.GetDB().Save(&device)
 	if result.Error != nil {
 		log.Printf("Error updating device: %v", result.Error)
 		http.Error(w, "Error updating device", http.StatusInternalServerError)
@@ -188,7 +192,7 @@ func deleteDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := DB.Delete(&Device{}, deviceID)
+	result := db.GetDB().Delete(&models.Device{}, deviceID)
 	if result.Error != nil {
 		log.Printf("Error deleting device: %v", result.Error)
 		http.Error(w, "Error deleting device", http.StatusInternalServerError)

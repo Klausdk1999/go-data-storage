@@ -1,10 +1,13 @@
-package main
+﻿package handlers
 
 import (
 	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
+
+	"data-storage/internal/db"
+	"data-storage/internal/models"
 
 	"github.com/gorilla/mux"
 	"gorm.io/gorm"
@@ -37,8 +40,8 @@ func SignalHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getAllSignals(w http.ResponseWriter, r *http.Request) {
-	var signals []Signal
-	query := DB.Preload("Device")
+	var signals []models.Signal
+	query := db.GetDB().Preload("Device")
 
 	// Filter by device_id
 	if deviceID := r.URL.Query().Get("device_id"); deviceID != "" {
@@ -86,8 +89,8 @@ func getSignal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var signal Signal
-	result := DB.Preload("Device").First(&signal, signalID)
+	var signal models.Signal
+	result := db.GetDB().Preload("Device").First(&signal, signalID)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
 			http.Error(w, "Signal not found", http.StatusNotFound)
@@ -103,7 +106,7 @@ func getSignal(w http.ResponseWriter, r *http.Request) {
 }
 
 func createSignal(w http.ResponseWriter, r *http.Request) {
-	var signal Signal
+	var signal models.Signal
 	if err := json.NewDecoder(r.Body).Decode(&signal); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
@@ -116,8 +119,8 @@ func createSignal(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Verify device exists
-	var device Device
-	result := DB.First(&device, signal.DeviceID)
+	var device models.Device
+	result := db.GetDB().First(&device, signal.DeviceID)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
 			http.Error(w, "Device not found", http.StatusNotFound)
@@ -151,7 +154,7 @@ func createSignal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result = DB.Create(&signal)
+	result = db.GetDB().Create(&signal)
 	if result.Error != nil {
 		log.Printf("Error creating signal: %v", result.Error)
 		http.Error(w, "Error creating signal", http.StatusInternalServerError)
@@ -159,7 +162,7 @@ func createSignal(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Reload with relations
-	DB.Preload("Device").First(&signal, signal.ID)
+	db.GetDB().Preload("Device").First(&signal, signal.ID)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -180,8 +183,8 @@ func updateSignal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var signal Signal
-	result := DB.First(&signal, signalID)
+	var signal models.Signal
+	result := db.GetDB().First(&signal, signalID)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
 			http.Error(w, "Signal not found", http.StatusNotFound)
@@ -191,7 +194,7 @@ func updateSignal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var updateData Signal
+	var updateData models.Signal
 	if err := json.NewDecoder(r.Body).Decode(&updateData); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
@@ -236,7 +239,7 @@ func updateSignal(w http.ResponseWriter, r *http.Request) {
 	// is_active can be explicitly set
 	signal.IsActive = updateData.IsActive
 
-	result = DB.Save(&signal)
+	result = db.GetDB().Save(&signal)
 	if result.Error != nil {
 		log.Printf("Error updating signal: %v", result.Error)
 		http.Error(w, "Error updating signal", http.StatusInternalServerError)
@@ -261,7 +264,7 @@ func deleteSignal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := DB.Delete(&Signal{}, signalID)
+	result := db.GetDB().Delete(&models.Signal{}, signalID)
 	if result.Error != nil {
 		log.Printf("Error deleting signal: %v", result.Error)
 		http.Error(w, "Error deleting signal", http.StatusInternalServerError)
@@ -296,8 +299,8 @@ func DeviceSignalsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var signals []Signal
-	query := DB.Where("device_id = ?", deviceID).Preload("Device")
+	var signals []models.Signal
+	query := db.GetDB().Where("device_id = ?", deviceID).Preload("Device")
 
 	// Apply filters
 	if signalType := r.URL.Query().Get("signal_type"); signalType != "" {
@@ -317,4 +320,3 @@ func DeviceSignalsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(signals)
 }
-

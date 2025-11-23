@@ -1,8 +1,11 @@
-package main
+package handlers
 
 import (
 	"encoding/json"
 	"net/http"
+
+	"data-storage/internal/db"
+	"data-storage/internal/models"
 
 	"github.com/gorilla/mux"
 	"gorm.io/gorm"
@@ -22,8 +25,8 @@ func GetUserByRFIDHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var user User
-	result := DB.Where("rfid = ?", rfid).First(&user)
+	var user models.User
+	result := db.GetDB().Where("rfid = ?", rfid).First(&user)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
 			http.Error(w, "User not found", http.StatusNotFound)

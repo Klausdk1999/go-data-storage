@@ -1,4 +1,4 @@
-package main
+package handlers
 
 import (
 	"encoding/json"
@@ -6,6 +6,9 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+
+	"data-storage/internal/db"
+	"data-storage/internal/models"
 
 	"github.com/gorilla/mux"
 	"gorm.io/gorm"
@@ -17,7 +20,7 @@ func SignalValuesHandler(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		getAllSignalValues(w, r)
 	case "POST":
-		createSignalValue(w, r)
+		CreateSignalValue(w, r)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -36,8 +39,8 @@ func SignalValueHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getAllSignalValues(w http.ResponseWriter, r *http.Request) {
-	var signalValues []SignalValue
-	query := DB.Preload("Signal").Preload("Signal.Device").Preload("User")
+	var signalValues []models.SignalValue
+	query := db.GetDB().Preload("Signal").Preload("Signal.Device").Preload("User")
 
 	// Filter by signal_id
 	if signalID := r.URL.Query().Get("signal_id"); signalID != "" {
@@ -98,8 +101,8 @@ func getSignalValue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var signalValue SignalValue
-	result := DB.Preload("Signal").Preload("Signal.Device").Preload("User").First(&signalValue, valueID)
+	var signalValue models.SignalValue
+	result := db.GetDB().Preload("Signal").Preload("Signal.Device").Preload("User").First(&signalValue, valueID)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
 			http.Error(w, "Signal value not found", http.StatusNotFound)
@@ -114,9 +117,9 @@ func getSignalValue(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(signalValue)
 }
 
-// createSignalValue is exported for use in main.go routing
-func createSignalValue(w http.ResponseWriter, r *http.Request) {
-	var signalValue SignalValue
+// CreateSignalValue is exported for use in main.go routing
+func CreateSignalValue(w http.ResponseWriter, r *http.Request) {
+	var signalValue models.SignalValue
 	if err := json.NewDecoder(r.Body).Decode(&signalValue); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
@@ -129,8 +132,8 @@ func createSignalValue(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Verify signal exists and get device info
-	var signal Signal
-	result := DB.Preload("Device").First(&signal, signalValue.SignalID)
+	var signal models.Signal
+	result := db.GetDB().Preload("Device").First(&signal, signalValue.SignalID)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
 			http.Error(w, "Signal not found", http.StatusNotFound)
@@ -197,7 +200,7 @@ func createSignalValue(w http.ResponseWriter, r *http.Request) {
 		signalValue.Timestamp = time.Now()
 	}
 
-	result = DB.Create(&signalValue)
+	result = db.GetDB().Create(&signalValue)
 	if result.Error != nil {
 		log.Printf("Error creating signal value: %v", result.Error)
 		http.Error(w, "Error creating signal value", http.StatusInternalServerError)
@@ -205,7 +208,7 @@ func createSignalValue(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Reload with relations
-	DB.Preload("Signal").Preload("Signal.Device").Preload("User").First(&signalValue, signalValue.ID)
+	db.GetDB().Preload("Signal").Preload("Signal.Device").Preload("User").First(&signalValue, signalValue.ID)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -226,7 +229,7 @@ func deleteSignalValue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := DB.Delete(&SignalValue{}, valueID)
+	result := db.GetDB().Delete(&models.SignalValue{}, valueID)
 	if result.Error != nil {
 		log.Printf("Error deleting signal value: %v", result.Error)
 		http.Error(w, "Error deleting signal value", http.StatusInternalServerError)
@@ -261,8 +264,8 @@ func SignalValuesBySignalHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var signalValues []SignalValue
-	query := DB.Where("signal_id = ?", signalID).Preload("Signal").Preload("User")
+	var signalValues []models.SignalValue
+	query := db.GetDB().Where("signal_id = ?", signalID).Preload("Signal").Preload("User")
 
 	// Date range filters
 	if fromDate := r.URL.Query().Get("from_date"); fromDate != "" {

@@ -1,4 +1,4 @@
-package main
+package handlers
 
 import (
 	"encoding/json"
@@ -6,6 +6,9 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+
+	"data-storage/internal/db"
+	"data-storage/internal/models"
 )
 
 // ReadingsHandler is a legacy handler for backward compatibility
@@ -23,8 +26,8 @@ func ReadingsHandler(w http.ResponseWriter, r *http.Request) {
 
 func getAllReadings(w http.ResponseWriter, r *http.Request) {
 	// Redirect to signal values
-	var signalValues []SignalValue
-	query := DB.Preload("Signal").Preload("Signal.Device").Preload("User")
+	var signalValues []models.SignalValue
+	query := db.GetDB().Preload("Signal").Preload("Signal.Device").Preload("User")
 
 	// Limit results
 	limit := r.URL.Query().Get("limit")
@@ -76,7 +79,7 @@ func createReading(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create as signal value
-	signalValue := SignalValue{
+	signalValue := models.SignalValue{
 		SignalID:     readingData.SignalID,
 		UserID:       func() *uint { if readingData.UserID > 0 { u := readingData.UserID; return &u }; return nil }(),
 		Value:        readingData.Value,
@@ -84,7 +87,7 @@ func createReading(w http.ResponseWriter, r *http.Request) {
 		Timestamp:    time.Now(),
 	}
 
-	result := DB.Create(&signalValue)
+	result := db.GetDB().Create(&signalValue)
 	if result.Error != nil {
 		log.Printf("Error creating reading: %v", result.Error)
 		http.Error(w, result.Error.Error(), http.StatusInternalServerError)

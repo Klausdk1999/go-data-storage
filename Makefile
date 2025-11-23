@@ -30,11 +30,11 @@ vet:
 
 # Build the application
 build:
-	go build -o bin/main main.go
+	go build -o bin/main ./cmd/api
 
 # Run the application
 run:
-	go run main.go
+	go run ./cmd/api
 
 # Clean build artifacts
 clean:

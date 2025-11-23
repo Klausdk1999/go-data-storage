@@ -1,10 +1,13 @@
-package main
+package handlers
 
 import (
 	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
+
+	"data-storage/internal/db"
+	"data-storage/internal/models"
 
 	"github.com/gorilla/mux"
 	"gorm.io/gorm"
@@ -22,8 +25,8 @@ func UsersHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getAllUsers(w http.ResponseWriter, r *http.Request) {
-	var users []User
-	result := DB.Find(&users)
+	var users []models.User
+	result := db.GetDB().Find(&users)
 	if result.Error != nil {
 		log.Printf("Database query error: %v", result.Error)
 		http.Error(w, "Database query error", http.StatusInternalServerError)
@@ -42,7 +45,7 @@ func getAllUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func createUser(w http.ResponseWriter, r *http.Request) {
-	var user User
+	var user models.User
 	var userData struct {
 		Name      string `json:"name"`
 		Email     string `json:"email"`
@@ -73,7 +76,7 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result := DB.Create(&user)
+	result := db.GetDB().Create(&user)
 	if result.Error != nil {
 		log.Printf("Error creating user: %v", result.Error)
 		http.Error(w, result.Error.Error(), http.StatusInternalServerError)
@@ -116,8 +119,8 @@ func getUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var user User
-	result := DB.Preload("Devices").First(&user, userID)
+	var user models.User
+	result := db.GetDB().Preload("Devices").First(&user, userID)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
 			http.Error(w, "User not found", http.StatusNotFound)
@@ -149,8 +152,8 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var user User
-	result := DB.First(&user, userID)
+	var user models.User
+	result := db.GetDB().First(&user, userID)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
 			http.Error(w, "User not found", http.StatusNotFound)
@@ -202,7 +205,7 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result = DB.Save(&user)
+	result = db.GetDB().Save(&user)
 	if result.Error != nil {
 		log.Printf("Error updating user: %v", result.Error)
 		http.Error(w, "Error updating user", http.StatusInternalServerError)
@@ -230,7 +233,7 @@ func deleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := DB.Delete(&User{}, userID)
+	result := db.GetDB().Delete(&models.User{}, userID)
 	if result.Error != nil {
 		log.Printf("Error deleting user: %v", result.Error)
 		http.Error(w, "Error deleting user", http.StatusInternalServerError)
