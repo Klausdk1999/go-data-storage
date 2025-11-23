@@ -1,0 +1,8 @@
+*.md
+*.json
+documentation/
+.git
+.gitignore
+.env
+*.log
+

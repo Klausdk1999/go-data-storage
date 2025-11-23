@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  # Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: iot-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - frontend
+      - api
+    networks:
+      - iot-network
+    restart: unless-stopped
+
+  # Container Management
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: iot-portainer
+    ports:
+      - "9000:9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    networks:
+      - iot-network
+    restart: unless-stopped
+
+  # File Storage & Cloud Sync
+  nextcloud:
+    image: nextcloud:latest
+    container_name: iot-nextcloud
+    ports:
+      - "8081:80"
+    volumes:
+      - nextcloud_data:/var/www/html
+      - ./nextcloud_data:/var/www/html/data
+    environment:
+      - MYSQL_HOST=nextcloud_db
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+      - MYSQL_PASSWORD=${NEXTCLOUD_DB_PASSWORD:-nextcloud_password}
+      - NEXTCLOUD_TRUSTED_DOMAINS=${NEXTCLOUD_DOMAIN:-localhost}
+    depends_on:
+      - nextcloud_db
+    networks:
+      - iot-network
+    restart: unless-stopped
+
+  nextcloud_db:
+    image: mariadb:latest
+    container_name: iot-nextcloud-db
+    environment:
+      - MYSQL_ROOT_PASSWORD=${NEXTCLOUD_ROOT_PASSWORD:-root_password}
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+      - MYSQL_PASSWORD=${NEXTCLOUD_DB_PASSWORD:-nextcloud_password}
+    volumes:
+      - nextcloud_db_data:/var/lib/mysql
+    networks:
+      - iot-network
+    restart: unless-stopped
+
+volumes:
+  nextcloud_data:
+  nextcloud_db_data:
+  portainer_data:
+
+networks:
+  iot-network:
+    external: true
+
