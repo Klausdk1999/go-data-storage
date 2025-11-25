@@ -1,9 +1,11 @@
 #!/bin/bash
 
 # IoT System Startup Script
-# Usage: ./run.sh [--seed|--no-seed]
+# Usage: ./run.sh [--seed|--no-seed] [--rebuild|--no-rebuild]
 #   --no-seed: Start all services without seeding (default)
 #   --seed: Start all services and seed the database
+#   --rebuild: Force rebuild of Docker images (default)
+#   --no-rebuild: Use existing images without rebuilding
 
 set -e
 
@@ -14,17 +16,38 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Default to no seed
+# Default to no seed and rebuild
 SEED_DB=false
-if [[ "$1" == "--seed" ]]; then
-    SEED_DB=true
-elif [[ "$1" == "--no-seed" || "$1" == "" ]]; then
-    SEED_DB=false
-else
-    echo -e "${RED}Error: Invalid argument '$1'${NC}"
-    echo "Usage: $0 [--seed|--no-seed]"
-    exit 1
-fi
+REBUILD=true
+
+# Parse arguments
+for arg in "$@"; do
+    case $arg in
+        --seed)
+            SEED_DB=true
+            shift
+            ;;
+        --no-seed)
+            SEED_DB=false
+            shift
+            ;;
+        --rebuild)
+            REBUILD=true
+            shift
+            ;;
+        --no-rebuild)
+            REBUILD=false
+            shift
+            ;;
+        *)
+            if [[ "$arg" != "" ]]; then
+                echo -e "${RED}Error: Invalid argument '$arg'${NC}"
+                echo "Usage: $0 [--seed|--no-seed] [--rebuild|--no-rebuild]"
+                exit 1
+            fi
+            ;;
+    esac
+done
 
 echo -e "${BLUE}=================================================${NC}"
 echo -e "${BLUE}  IoT System Startup Script${NC}"
@@ -87,7 +110,11 @@ start_services() {
         exit 1
     fi
     
-    # Start API
+    # Build and start API
+    if [ "$REBUILD" = true ]; then
+        echo -e "${BLUE}Building API...${NC}"
+        docker-compose -f docker-compose.full.yml build api
+    fi
     echo -e "${BLUE}Starting API...${NC}"
     docker-compose -f docker-compose.full.yml up -d api
     
@@ -105,7 +132,11 @@ start_services() {
         sleep 1
     done
     
-    # Start Frontend
+    # Build and start Frontend
+    if [ "$REBUILD" = true ]; then
+        echo -e "${BLUE}Building Frontend...${NC}"
+        docker-compose -f docker-compose.full.yml build frontend
+    fi
     echo -e "${BLUE}Starting Frontend...${NC}"
     docker-compose -f docker-compose.full.yml up -d frontend
     
@@ -232,9 +263,10 @@ EOF
     echo ""
 }
 
-# Main execution
-echo -e "${BLUE}Mode: ${SEED_DB:+With seed}${SEED_DB:-Without seed}${NC}"
-echo ""
+    # Main execution
+    echo -e "${BLUE}Mode: ${SEED_DB:+With seed}${SEED_DB:-Without seed}${NC}"
+    echo -e "${BLUE}Rebuild: ${REBUILD:+Yes}${REBUILD:-No}${NC}"
+    echo ""
 
 # Stop existing services
 stop_services
