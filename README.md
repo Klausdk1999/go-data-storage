@@ -4,9 +4,10 @@ REST API for storing and retrieving IoT sensor data with device management, sign
 
 ## Dependencies
 
-- **Go 1.21+**
+- **Go 1.23+**
 - **PostgreSQL 16+** (or use Docker)
 - **golangci-lint** (for linting - install via `make install-tools`)
+- **goimports** (for formatting - install via `make install-tools`)
 
 ## Project Structure
 
@@ -49,13 +50,122 @@ go-data-storage/
 
 ## Installation
 
-```bash
-# Install Go dependencies
-go mod download
+### Prerequisites
 
-# Install development tools
-make install-tools
-```
+To run this project locally, you need to install:
+
+1. **Go 1.23+**
+   - Download from: https://go.dev/dl/
+   - Verify installation: `go version` (should show 1.23 or higher)
+   - Set `GOPATH` and `GOROOT` if needed (usually automatic)
+
+2. **PostgreSQL 16+** (choose one option):
+   - **Option A**: Install PostgreSQL locally
+     - Windows: Download from https://www.postgresql.org/download/windows/
+     - macOS: `brew install postgresql@16` or download from https://www.postgresql.org/download/macosx/
+     - Linux: `sudo apt-get install postgresql-16` (Ubuntu/Debian) or use your distro's package manager
+   - **Option B**: Use Docker (recommended for development)
+     - Install Docker Desktop: https://www.docker.com/products/docker-desktop/
+     - Run: `docker-compose -f infra/docker-compose.yml up -d`
+
+3. **Development Tools** (optional but recommended):
+   - **golangci-lint**: For code linting
+   - **goimports**: For code formatting
+   - These will be installed via `make install-tools`
+
+4. **Make** (optional, for using Makefile commands):
+   - Windows: Install via Chocolatey (`choco install make`) or use Git Bash
+   - macOS: Usually pre-installed, or `xcode-select --install`
+   - Linux: Usually pre-installed, or `sudo apt-get install build-essential`
+
+### Setup Steps
+
+1. **Clone the repository** (if not already done):
+   ```bash
+   git clone <repository-url>
+   cd go-data-storage
+   ```
+
+2. **Install Go dependencies**:
+   ```bash
+   go mod download
+   go mod tidy
+   ```
+
+3. **Install development tools**:
+   ```bash
+   make install-tools
+   # Or manually:
+   # go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+   # go install golang.org/x/tools/cmd/goimports@latest
+   ```
+
+4. **Set up PostgreSQL database**:
+   
+   If using local PostgreSQL:
+   ```bash
+   # Create database and user
+   psql -U postgres
+   CREATE DATABASE iotdb;
+   CREATE USER iotuser WITH PASSWORD 'iotpassword';
+   GRANT ALL PRIVILEGES ON DATABASE iotdb TO iotuser;
+   \q
+   ```
+   
+   If using Docker:
+   ```bash
+   docker-compose -f infra/docker-compose.yml up -d
+   # Database will be created automatically
+   ```
+
+5. **Create `.env` file** in the project root:
+   ```env
+   DB_HOST=localhost
+   DB_PORT=5432
+   DB_USER=iotuser
+   DB_PASSWORD=iotpassword
+   DB_NAME=iotdb
+   ```
+   
+   For Docker setup, use:
+   ```env
+   DB_HOST=postgres
+   DB_PORT=5432
+   DB_USER=iotuser
+   DB_PASSWORD=iotpassword
+   DB_NAME=iotdb
+   ```
+
+6. **Run database migrations** (if not using auto-migration):
+   ```bash
+   psql -U iotuser -d iotdb -f migrations/001_init_schema.sql
+   psql -U iotuser -d iotdb -f migrations/002_add_devices_and_auth.sql
+   psql -U iotuser -d iotdb -f migrations/003_separate_signal_values.sql
+   ```
+   
+   Note: The application uses GORM auto-migration, so manual migration is usually not needed.
+
+7. **Verify installation**:
+   ```bash
+   # Build the application
+   make build
+   # or
+   go build -o bin/main ./cmd/api
+   
+   # Run tests
+   make test
+   # or
+   go test ./...
+   ```
+
+8. **Run the application**:
+   ```bash
+   make run
+   # or
+   go run ./cmd/api
+   ```
+   
+   The API will start on `http://localhost:8080` (default port).
 
 ## Configuration
 
