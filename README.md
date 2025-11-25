@@ -34,14 +34,15 @@ go-data-storage/
 │   ├── 002_add_devices_and_auth.sql
 │   └── 003_separate_signal_values.sql
 ├── infra/                       # Infrastructure and server configuration
-│   ├── docker-compose.yml        # Docker Compose for API and PostgreSQL
-│   ├── docker-compose.infrastructure.yml  # Infrastructure services (Nginx, Portainer, Nextcloud)
+│   ├── docker-compose.full.yml   # Docker Compose for all services (DB, API, Frontend)
+│   ├── docker-compose.test.yml   # Docker Compose for test database
 │   └── nginx/                    # Nginx reverse proxy configuration
 │       └── nginx.conf
 ├── scripts/                      # Utility scripts
-│   ├── start.ps1                 # Start main services
-│   ├── start-infrastructure.ps1  # Start infrastructure services
-│   └── setup-remote-access.ps1   # Setup remote access
+│   └── seed.go                   # Database seeding script
+├── run.sh                        # Start all services (DB, API, Frontend)
+├── test.sh                       # Run tests
+└── stop.sh                       # Stop all services
 ├── documentation/                # API documentation (Insomnia exports)
 ├── Makefile                      # Build and test commands
 ├── .golangci.yml                 # Linter configuration
@@ -204,13 +205,46 @@ make build
 go build -o bin/main main.go
 ```
 
-### Testing
+### Database Seeding
 
 ```bash
-# Run all tests
-make test
+# Seed database with test data (user, devices, signals, signal values)
+make seed
 # or
-go test ./...
+go run scripts/seed.go
+```
+
+This will create:
+- **1 test user**: `test@example.com` / `password123`
+- **3 devices**: Temperature sensor, Humidity sensor, Smart light switch
+- **5 signals**: Various analogic/digital, input/output signals
+- **~97 signal values**: Historical data for testing
+
+**Note**: The seed script will clear existing data before inserting test data.
+
+### Testing
+
+#### Using Bash Script (Recommended)
+
+```bash
+# Run unit tests in Docker
+./test.sh
+
+# Run integration tests (with PostgreSQL)
+./test.sh --integration
+
+# Run tests with coverage
+./test.sh --coverage
+
+# Show help
+./test.sh --help
+```
+
+#### Using Makefile
+
+```bash
+# Unit tests (local Go)
+make test
 
 # Run tests with coverage
 make test-coverage
@@ -218,6 +252,17 @@ make test-coverage
 
 # View coverage percentage
 go test -cover ./...
+```
+
+#### Using Go Directly (Local)
+
+```bash
+# Run all tests
+go test -v ./...
+
+# Run tests with coverage
+make test-coverage
+# Generates: coverage.html and coverage.out
 ```
 
 ### Code Quality
@@ -238,22 +283,39 @@ make check
 
 ### Docker Deployment
 
-```bash
-# Start API and PostgreSQL using Docker Compose
-.\scripts\start.ps1
-# or
-docker-compose -f infra/docker-compose.yml up -d
+The easiest way to run everything is using the provided scripts:
 
-# Start infrastructure services (Nginx, Portainer, Nextcloud)
-.\scripts\start-infrastructure.ps1
-# or
-docker-compose -f infra/docker-compose.infrastructure.yml up -d
+```bash
+# Start all services (DB, API, Frontend) - no seed
+./run.sh
+
+# Start all services with database seed
+./run.sh --seed
+
+# Stop all services
+./stop.sh
+
+# Run tests
+./test.sh
+```
+
+Or manually using Docker Compose:
+
+```bash
+# Start all services (DB, API, Frontend)
+cd infra
+docker-compose -f docker-compose.full.yml up -d
+
+# Stop all services
+docker-compose -f docker-compose.full.yml down
+```
 
 # View logs
-docker-compose -f infra/docker-compose.yml logs -f
+cd infra
+docker-compose -f docker-compose.full.yml logs -f
 
 # Stop services
-docker-compose -f infra/docker-compose.yml down
+docker-compose -f docker-compose.full.yml down
 ```
 
 ### Database

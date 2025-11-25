@@ -4,7 +4,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strconv"
 
 	"data-storage/internal/auth"
 	"data-storage/internal/db"

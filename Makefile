@@ -1,8 +1,20 @@
 .PHONY: test test-coverage lint fmt vet build run clean
 
-# Run all tests
+# Run all tests (unit tests locally)
 test:
 	go test -v ./...
+
+# Run tests with Docker (unit tests)
+test-docker:
+	./scripts/test.ps1
+
+# Run integration tests with Docker (requires database)
+test-integration:
+	./scripts/test.ps1 --integration
+
+# Run tests with coverage using Docker
+test-coverage-docker:
+	./scripts/test.ps1 --coverage
 
 # Run tests with coverage
 test-coverage:
@@ -53,4 +65,8 @@ install-tools:
 
 # Run all quality checks
 check: fmt vet lint test
+
+# Seed database with test data
+seed:
+	go run scripts/seed.go
 
