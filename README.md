@@ -4,8 +4,8 @@ REST API for storing and retrieving IoT sensor data with device management, sign
 
 ## Dependencies
 
-- **Go 1.23+**
-- **PostgreSQL 16+** (or use Docker)
+- **Go 1.21+** (auto-upgrades to 1.24+ for MQTT support)
+- **PostgreSQL 16+** (optional - can use SQLite instead)
 - **golangci-lint** (for linting - install via `make install-tools`)
 - **goimports** (for formatting - install via `make install-tools`)
 
@@ -60,14 +60,18 @@ To run this project locally, you need to install:
    - Verify installation: `go version` (should show 1.23 or higher)
    - Set `GOPATH` and `GOROOT` if needed (usually automatic)
 
-2. **PostgreSQL 16+** (choose one option):
-   - **Option A**: Install PostgreSQL locally
-     - Windows: Download from https://www.postgresql.org/download/windows/
-     - macOS: `brew install postgresql@16` or download from https://www.postgresql.org/download/macosx/
-     - Linux: `sudo apt-get install postgresql-16` (Ubuntu/Debian) or use your distro's package manager
-   - **Option B**: Use Docker (recommended for development)
-     - Install Docker Desktop: https://www.docker.com/products/docker-desktop/
-     - Run: `docker-compose -f infra/docker-compose.yml up -d`
+2. **Database** (choose one option):
+   - **Option A**: SQLite (simplest, recommended for development)
+     - No installation needed - SQLite is embedded
+     - Database file stored in `./data/` directory
+   - **Option B**: PostgreSQL 16+ (for production/scalability)
+     - **Option B1**: Install PostgreSQL locally
+       - Windows: Download from https://www.postgresql.org/download/windows/
+       - macOS: `brew install postgresql@16` or download from https://www.postgresql.org/download/macosx/
+       - Linux: `sudo apt-get install postgresql-16` (Ubuntu/Debian) or use your distro's package manager
+     - **Option B2**: Use Docker (recommended for development)
+       - Install Docker Desktop: https://www.docker.com/products/docker-desktop/
+       - Run: `docker-compose -f infra/docker-compose.yml up -d`
 
 3. **Development Tools** (optional but recommended):
    - **golangci-lint**: For code linting
@@ -120,21 +124,35 @@ To run this project locally, you need to install:
    ```
 
 5. **Create `.env` file** in the project root:
+   
+   **For SQLite (simplest):**
    ```env
+   DB_TYPE=sqlite
+   DB_PATH=./data/storage.db
+   PORT=8080
+   ```
+   
+   **For PostgreSQL:**
+   ```env
+   DB_TYPE=postgres
    DB_HOST=localhost
    DB_PORT=5432
    DB_USER=iotuser
    DB_PASSWORD=iotpassword
    DB_NAME=iotdb
+   PORT=8080
    ```
    
-   For Docker setup, use:
+   **With TTN MQTT integration (optional):**
    ```env
-   DB_HOST=postgres
-   DB_PORT=5432
-   DB_USER=iotuser
-   DB_PASSWORD=iotpassword
-   DB_NAME=iotdb
+   DB_TYPE=sqlite
+   DB_PATH=./data/storage.db
+   PORT=8080
+   
+   # TTN MQTT Configuration
+   TTN_MQTT_BROKER=mqtt://nam1.cloud.thethings.network:1883
+   TTN_USERNAME=your-ttn-application-id@ttn
+   TTN_PASSWORD=your-ttn-api-key
    ```
 
 6. **Run database migrations** (if not using auto-migration):
@@ -160,50 +178,119 @@ To run this project locally, you need to install:
    ```
 
 8. **Run the application**:
-   ```bash
-   make run
-   # or
+   
+   **Important for SQLite:** SQLite requires CGO to be enabled. Set `CGO_ENABLED=1` before running:
+   
+   **Windows PowerShell:**
+   ```powershell
+   $env:CGO_ENABLED = "1"
    go run ./cmd/api
    ```
    
-   The API will start on `http://localhost:8080` (default port).
+   **Windows CMD:**
+   ```cmd
+   set CGO_ENABLED=1
+   go run ./cmd/api
+   ```
+   
+   **Linux/macOS:**
+   ```bash
+   CGO_ENABLED=1 go run ./cmd/api
+   ```
+   
+   **Windows WSL (recommended for SQLite on Windows):**
+   ```bash
+   # From PowerShell/CMD, run:
+   wsl bash run-wsl.sh
+   
+   # Or manually:
+   wsl bash -c "export PATH=/usr/local/go/bin:\$PATH && export CGO_ENABLED=1 && cd '/mnt/c/Users/Klaus/Documents/Mestrado CA/go-data-storage' && go run ./cmd/api"
+   ```
+   
+   **Note:** WSL already has `gcc` installed, so CGO works out of the box. This is the easiest way to run with SQLite on Windows without installing a C compiler.
+   
+   **Note:** If you get CGO errors, you may need a C compiler:
+   - **Windows**: Install TDM-GCC, MinGW, or use `choco install mingw`
+   - **macOS**: Install Xcode Command Line Tools: `xcode-select --install`
+   - **Linux**: Install `gcc` via your package manager
+   
+   The API will start on `http://localhost:8080` (default port, configurable via `PORT` env var).
+   
+   **Alternative:** Use PostgreSQL instead of SQLite (doesn't require CGO):
+   ```env
+   DB_TYPE=postgres
+   DB_HOST=localhost
+   DB_PORT=5432
+   DB_USER=iotuser
+   DB_PASSWORD=iotpassword
+   DB_NAME=iotdb
+   ```
 
 ## Configuration
 
-Create `.env` file:
+Create `.env` file in the project root. See setup steps above for examples.
 
-```env
-DB_HOST=localhost
-DB_PORT=5432
-DB_USER=iotuser
-DB_PASSWORD=iotpassword
-DB_NAME=iotdb
-```
-
-For Docker, use:
-```env
-DB_HOST=postgres
-DB_PORT=5432
-DB_USER=iotuser
-DB_PASSWORD=iotpassword
-DB_NAME=iotdb
-```
+**Environment Variables:**
+- `DB_TYPE` - Database type: `sqlite` or `postgres` (default: `postgres`)
+- `DB_PATH` - SQLite database file path (required if `DB_TYPE=sqlite`)
+- `DB_HOST` - PostgreSQL host (required if `DB_TYPE=postgres`)
+- `DB_PORT` - PostgreSQL port (default: `5432`)
+- `DB_USER` - PostgreSQL username (required if `DB_TYPE=postgres`)
+- `DB_PASSWORD` - PostgreSQL password (required if `DB_TYPE=postgres`)
+- `DB_NAME` - PostgreSQL database name (required if `DB_TYPE=postgres`)
+- `PORT` - API server port (default: `8080`)
+- `TTN_MQTT_BROKER` - TTN MQTT broker URL (optional, for TTN integration)
+- `TTN_USERNAME` - TTN application username (optional)
+- `TTN_PASSWORD` - TTN API key (optional)
 
 ## Commands
 
 ### Development
 
-```bash
-# Run the API
-make run
-# or
-go run main.go
+**For SQLite (requires CGO_ENABLED=1):**
 
-# Build the application
-make build
-# or
-go build -o bin/main main.go
+**Windows PowerShell:**
+```powershell
+$env:CGO_ENABLED = "1"
+go run ./cmd/api
 ```
+
+**Windows CMD:**
+```cmd
+set CGO_ENABLED=1
+go run ./cmd/api
+```
+
+**Linux/macOS:**
+```bash
+CGO_ENABLED=1 go run ./cmd/api
+```
+
+**Windows WSL (recommended for SQLite):**
+```bash
+# Use the provided script:
+wsl bash run-wsl.sh
+
+# Or manually:
+wsl bash -c "export PATH=/usr/local/go/bin:\$PATH && export CGO_ENABLED=1 && cd '/mnt/c/Users/Klaus/Documents/Mestrado CA/go-data-storage' && go run ./cmd/api"
+```
+
+**Build:**
+```bash
+# Windows PowerShell
+$env:CGO_ENABLED = "1"
+go build -o bin/api.exe ./cmd/api
+
+# Linux/macOS
+CGO_ENABLED=1 go build -o bin/api ./cmd/api
+```
+
+**For PostgreSQL (doesn't require CGO):**
+```bash
+go run ./cmd/api
+```
+
+**Note:** The `make run` command requires a Makefile. If you don't have `make` installed, use the commands above directly.
 
 ### Database Seeding
 
@@ -362,6 +449,11 @@ psql -U iotuser -d iotdb -f migrations/003_separate_signal_values.sql
 - `DELETE /signal-values/{id}` - Delete signal value (requires auth)
 - `GET /signals/{signal_id}/values` - Get values for signal (requires auth)
 
+### TTN River Monitoring Endpoints
+- `GET /ttn/uplinks` - List TTN uplinks with filters (device_id, start_date, end_date, limit)
+- `GET /ttn/devices` - List all TTN devices with statistics
+- `GET /ttn/stats` - Get TTN statistics (total uplinks, unique devices, date range)
+
 ## Authentication
 
 ### User Authentication
@@ -449,8 +541,32 @@ docker run -p 8080:8080 \
 
 **Note**: For production deployment, use `docker-compose` (see Docker Deployment section above) which includes PostgreSQL and proper networking.
 
+## TTN MQTT Integration
+
+The API supports automatic data collection from The Things Network (TTN) via MQTT.
+
+**Features:**
+- Automatically subscribes to TTN uplink messages
+- Decodes binary sensor payloads (TF02-Pro LiDAR format)
+- Stores data in the database as SignalValue records
+- Auto-creates Device and Signal entries for TTN devices
+
+**Configuration:**
+Add to `.env`:
+```env
+TTN_MQTT_BROKER=mqtt://nam1.cloud.thethings.network:1883
+TTN_USERNAME=your-application-id@ttn
+TTN_PASSWORD=your-ttn-api-key
+```
+
+The MQTT client will automatically connect on startup if credentials are provided.
+
 ## Troubleshooting
 
-- **Database connection errors**: Check `.env` file and ensure PostgreSQL is running
-- **Port already in use**: Change port in `cmd/main.go` or use environment variable
-- **Migration errors**: Run migrations manually (see Database section)
+- **Database connection errors**: 
+  - Check `.env` file and database credentials
+  - For SQLite: Ensure the `data/` directory exists and is writable
+  - For PostgreSQL: Ensure PostgreSQL is running and accessible
+- **Port already in use**: Change `PORT` environment variable or kill the process using port 8080
+- **MQTT connection fails**: Check TTN credentials and broker URL. API will continue without MQTT if connection fails
+- **Migration errors**: GORM auto-migrates on startup. For manual migrations, see Database section

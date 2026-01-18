@@ -8,6 +8,7 @@ import (
 	"data-storage/internal/auth"
 	"data-storage/internal/db"
 	"data-storage/internal/handlers"
+	"data-storage/internal/mqtt"
 
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
@@ -26,6 +27,18 @@ func main() {
 	_, err = db.InitDB(dbConfig)
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
+	}
+
+	// Initialize MQTT connection (if configured)
+	mqttConfig := mqtt.LoadConfigFromEnv()
+	if mqttConfig.Broker != "" && mqttConfig.Username != "" && mqttConfig.Password != "" {
+		err = mqtt.ConnectMQTT(mqttConfig, mqtt.HandleMessage)
+		if err != nil {
+			log.Printf("Warning: Failed to connect to MQTT broker: %v", err)
+			log.Println("Continuing without MQTT - TTN data collection will not work")
+		}
+	} else {
+		log.Println("MQTT not configured - skipping TTN connection")
 	}
 
 	r := mux.NewRouter()
@@ -55,6 +68,11 @@ func main() {
 	})
 	r.HandleFunc("/signal-values/{id}", auth.RequireUserAuth(handlers.SignalValueHandler))
 	r.HandleFunc("/signals/{signal_id}/values", auth.RequireUserAuth(handlers.SignalValuesBySignalHandler)).Methods("GET")
+
+	// TTN endpoints
+	r.HandleFunc("/ttn/uplinks", auth.RequireUserAuth(handlers.TTNUplinksHandler)).Methods("GET")
+	r.HandleFunc("/ttn/devices", auth.RequireUserAuth(handlers.TTNDevicesHandler)).Methods("GET")
+	r.HandleFunc("/ttn/stats", auth.RequireUserAuth(handlers.TTNStatsHandler)).Methods("GET")
 
 	// Legacy endpoints for backward compatibility
 	r.HandleFunc("/readings", auth.RequireAnyAuth(handlers.ReadingsHandler))
