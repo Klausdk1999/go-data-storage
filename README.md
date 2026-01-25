@@ -4,10 +4,20 @@ REST API for storing and retrieving IoT sensor data with device management, sign
 
 ## Dependencies
 
-- **Go 1.21+** (auto-upgrades to 1.24+ for MQTT support)
+- **Go 1.25+**
 - **PostgreSQL 16+** (optional - can use SQLite instead)
 - **golangci-lint** (for linting - install via `make install-tools`)
 - **goimports** (for formatting - install via `make install-tools`)
+
+## Quick Start (Windows)
+
+```powershell
+.\run.ps1
+```
+
+Requirements:
+- Go 1.25+ on PATH
+- No C compiler required for SQLite
 
 ## Project Structure
 
@@ -40,7 +50,7 @@ go-data-storage/
 │       └── nginx.conf
 ├── scripts/                      # Utility scripts
 │   └── seed.go                   # Database seeding script
-├── run.sh                        # Start all services (DB, API, Frontend)
+├── run.ps1                       # Start API (Windows PowerShell)
 ├── test.sh                       # Run tests
 └── stop.sh                       # Stop all services
 ├── documentation/                # API documentation (Insomnia exports)
@@ -55,9 +65,9 @@ go-data-storage/
 
 To run this project locally, you need to install:
 
-1. **Go 1.23+**
+1. **Go 1.25+**
    - Download from: https://go.dev/dl/
-   - Verify installation: `go version` (should show 1.23 or higher)
+   - Verify installation: `go version` (should show 1.25 or higher)
    - Set `GOPATH` and `GOROOT` if needed (usually automatic)
 
 2. **Database** (choose one option):
