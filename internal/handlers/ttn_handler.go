@@ -17,16 +17,34 @@ type TTNUplink struct {
 	DeviceID       string    `json:"device_id"`
 	DevEUI         string    `json:"dev_eui"`
 	ReceivedAt     time.Time `json:"received_at"`
-	DistanceMm     uint16    `json:"distance_mm"`
-	DistanceCm     float64   `json:"distance_cm"`
-	BatteryPercent uint8     `json:"battery_percent"`
-	Temperature    int8      `json:"temperature"`
-	SignalStrength int16     `json:"signal_strength"`
-	ReadingCount   uint8     `json:"reading_count"`
-	RSSI           int       `json:"rssi"`
-	SNR            float64   `json:"snr"`
-	GatewayID      string    `json:"gateway_id"`
-	FCnt           int       `json:"f_cnt"`
+	PayloadFormat  string    `json:"payload_format,omitempty"`
+
+	// Distance measurements
+	DistanceMm          int16   `json:"distance_mm"`
+	DistanceCm          float64 `json:"distance_cm"`
+	UltrasonicDistMm    *int16  `json:"ultrasonic_distance_mm,omitempty"`
+	UltrasonicDistCm    *float64 `json:"ultrasonic_distance_cm,omitempty"`
+
+	// Temperature & humidity
+	Temperature    int8   `json:"temperature"`
+	AmbientTemp    *int8  `json:"ambient_temp,omitempty"`
+	SensorTemp     *int8  `json:"sensor_temp,omitempty"`
+	Humidity       *uint8 `json:"humidity,omitempty"`
+
+	// Battery
+	BatteryPercent uint8   `json:"battery_percent"`
+	BatteryMv      *uint16 `json:"battery_mv,omitempty"`
+
+	// Sensor info
+	SignalStrength int16  `json:"signal_strength"`
+	ReadingCount   uint8  `json:"reading_count"`
+	SensorFlags    *uint8 `json:"sensor_flags,omitempty"`
+
+	// LoRa metadata
+	RSSI      int     `json:"rssi"`
+	SNR       float64 `json:"snr"`
+	GatewayID string  `json:"gateway_id"`
+	FCnt      int     `json:"f_cnt"`
 }
 
 // TTNDevice represents a TTN device summary
@@ -110,7 +128,7 @@ func TTNUplinksHandler(w http.ResponseWriter, r *http.Request) {
 			ID:         sv.ID,
 			DeviceID:   sv.Signal.Device.Name,
 			ReceivedAt: sv.Timestamp,
-			DistanceMm: uint16(*sv.Value),
+			DistanceMm: int16(*sv.Value),
 			DistanceCm: *sv.Value / 10.0,
 		}
 
@@ -128,21 +146,45 @@ func TTNUplinksHandler(w http.ResponseWriter, r *http.Request) {
 			if fCnt, ok := sv.Metadata["f_cnt"].(float64); ok {
 				uplink.FCnt = int(fCnt)
 			}
+			if format, ok := sv.Metadata["payload_format"].(string); ok {
+				uplink.PayloadFormat = format
+			}
 		}
 
-		// Find battery, temp, signal strength from related values
+		// Find all related signal values
 		for _, rv := range relatedValues {
-			if rv.Signal.Name == "battery_percent" && rv.Value != nil {
+			if rv.Value == nil {
+				continue
+			}
+			switch rv.Signal.Name {
+			case "battery_percent":
 				uplink.BatteryPercent = uint8(*rv.Value)
-			}
-			if rv.Signal.Name == "temperature" && rv.Value != nil {
+			case "temperature":
 				uplink.Temperature = int8(*rv.Value)
-			}
-			if rv.Signal.Name == "signal_strength" && rv.Value != nil {
+			case "signal_strength":
 				uplink.SignalStrength = int16(*rv.Value)
-			}
-			if rv.Signal.Name == "reading_count" && rv.Value != nil {
+			case "reading_count":
 				uplink.ReadingCount = uint8(*rv.Value)
+			case "humidity":
+				h := uint8(*rv.Value)
+				uplink.Humidity = &h
+			case "ambient_temp":
+				t := int8(*rv.Value)
+				uplink.AmbientTemp = &t
+			case "sensor_temp":
+				t := int8(*rv.Value)
+				uplink.SensorTemp = &t
+			case "ultrasonic_distance_mm":
+				d := int16(*rv.Value)
+				uplink.UltrasonicDistMm = &d
+				cm := *rv.Value / 10.0
+				uplink.UltrasonicDistCm = &cm
+			case "battery_mv":
+				mv := uint16(*rv.Value)
+				uplink.BatteryMv = &mv
+			case "sensor_flags":
+				f := uint8(*rv.Value)
+				uplink.SensorFlags = &f
 			}
 		}
 
