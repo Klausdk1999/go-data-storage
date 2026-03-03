@@ -25,6 +25,7 @@ type Config struct {
 	Password string
 	DBName   string
 	Path     string // For SQLite: file path
+	SSLMode  string // For PostgreSQL: SSL mode (disable, require, verify-full)
 }
 
 func LoadConfigFromEnv() Config {
@@ -39,6 +40,11 @@ func LoadConfigFromEnv() Config {
 		port = 5432
 	}
 
+	sslMode := os.Getenv("DB_SSLMODE")
+	if sslMode == "" {
+		sslMode = "require"
+	}
+
 	return Config{
 		Type:     dbType,
 		Host:     os.Getenv("DB_HOST"),
@@ -47,6 +53,7 @@ func LoadConfigFromEnv() Config {
 		Password: os.Getenv("DB_PASSWORD"),
 		DBName:   os.Getenv("DB_NAME"),
 		Path:     os.Getenv("DB_PATH"),
+		SSLMode:  sslMode,
 	}
 }
 
@@ -86,8 +93,8 @@ func InitDB(cfg Config) (*gorm.DB, error) {
 			cfg.DBName = "iotdb"
 		}
 
-		dsn = fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
-			cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName)
+		dsn = fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+			cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode)
 
 		DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
 			Logger: logger.Default.LogMode(logger.Info),

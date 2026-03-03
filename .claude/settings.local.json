@@ -3,7 +3,9 @@
     "allow": [
       "Bash(go run:*)",
       "Bash(tree:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(claude mcp:*)",
+      "Bash(python:*)"
     ]
   }
 }

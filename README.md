@@ -1,6 +1,6 @@
 # Go Data Storage API
 
-REST API for storing and retrieving IoT sensor data with device management, signal configuration, and authentication.
+REST API for storing and retrieving IoT sensor data with device management, signal configuration, authentication, embedded MQTT broker, and manufacturing execution system (MES).
 
 ## Dependencies
 
@@ -23,40 +23,40 @@ Requirements:
 
 ```
 go-data-storage/
-├── main.go                      # Application entry point and routing
-├── db.go                        # Database connection and initialization
-├── models.go                    # Data models (User, Device, Signal, SignalValue)
-├── auth.go                      # Authentication logic and middleware
-├── auth_handler.go              # Authentication HTTP handlers (login, register device)
-├── users_handler.go             # User CRUD operations
-├── devices_handler.go            # Device CRUD operations
-├── signals_handler.go            # Signal configuration CRUD operations
-├── signal_values_handler.go      # Signal value data CRUD operations
-├── user_readings_handler.go      # Legacy user readings endpoint
-├── rfid_user_handler.go          # RFID user lookup endpoint
-├── readings_handler.go           # Legacy readings endpoint
-├── tests/                        # Test files
-│   ├── auth_test.go
-│   ├── handlers_test.go
-│   └── models_test.go
-├── migrations/                  # SQL migration files
-│   ├── 001_init_schema.sql
-│   ├── 002_add_devices_and_auth.sql
-│   └── 003_separate_signal_values.sql
-├── infra/                       # Infrastructure and server configuration
-│   ├── docker-compose.full.yml   # Docker Compose for all services (DB, API, Frontend)
-│   ├── docker-compose.test.yml   # Docker Compose for test database
-│   └── nginx/                    # Nginx reverse proxy configuration
-│       └── nginx.conf
-├── scripts/                      # Utility scripts
-│   └── seed.go                   # Database seeding script
-├── run.ps1                       # Start API (Windows PowerShell)
-├── test.sh                       # Run tests
-└── stop.sh                       # Stop all services
-├── documentation/                # API documentation (Insomnia exports)
-├── Makefile                      # Build and test commands
-├── .golangci.yml                 # Linter configuration
-└── Dockerfile                    # Docker build configuration
+├── cmd/api/
+│   └── main.go                          # Entry point, routing, server startup
+├── internal/
+│   ├── auth/                            # JWT auth, middleware, device tokens
+│   ├── db/                              # Database connection and config
+│   ├── handlers/                        # HTTP request handlers
+│   │   ├── auth_handler.go              # Login, device registration
+│   │   ├── users_handler.go             # User CRUD
+│   │   ├── devices_handler.go           # Device CRUD
+│   │   ├── signals_handler.go           # Signal configuration CRUD
+│   │   ├── signal_values_handler.go     # Signal value CRUD with filtering
+│   │   ├── generic_data_handler.go      # Generic device POST endpoint
+│   │   ├── ttn_handler.go              # TTN uplinks, devices, stats
+│   │   ├── products_handler.go          # MES: Product CRUD + BOM
+│   │   ├── raw_materials_handler.go     # MES: Raw material CRUD + stock
+│   │   ├── production_orders_handler.go # MES: Production orders + status
+│   │   ├── readings_handler.go          # Legacy readings
+│   │   ├── user_readings_handler.go     # Legacy user readings
+│   │   └── rfid_user_handler.go         # RFID user lookup
+│   ├── models/
+│   │   └── models.go                    # All data models (GORM)
+│   └── mqtt/
+│       ├── mqtt.go                      # TTN MQTT client
+│       └── broker.go                    # Embedded mochi-mqtt broker
+├── migrations/                          # SQL migration files
+├── infra/                               # Docker Compose, nginx config
+├── scripts/
+│   └── seed.go                          # Database seeding
+├── documentation/                       # API docs (Insomnia exports)
+├── Makefile                             # Build and test commands
+├── run.ps1                              # Start API (Windows PowerShell)
+├── test.sh                              # Run tests
+├── .golangci.yml                        # Linter configuration
+└── Dockerfile                           # Docker build
 ```
 
 ## Installation
@@ -249,6 +249,13 @@ Create `.env` file in the project root. See setup steps above for examples.
 - `DB_PASSWORD` - PostgreSQL password (required if `DB_TYPE=postgres`)
 - `DB_NAME` - PostgreSQL database name (required if `DB_TYPE=postgres`)
 - `PORT` - API server port (default: `8080`)
+- `DEVICE_API_KEY` - API key for generic device data endpoint (optional)
+- `DEVICE_AUTO_CREATE` - Auto-create devices on first data POST (default: `true`)
+- `MQTT_BROKER_ENABLED` - Enable embedded MQTT broker (default: `false`)
+- `MQTT_BROKER_PORT` - Embedded MQTT broker port (default: `1883`)
+- `MQTT_BROKER_TLS_ENABLED` - Enable TLS for MQTT broker (default: `false`)
+- `MQTT_BROKER_TLS_CERT` - TLS certificate file path
+- `MQTT_BROKER_TLS_KEY` - TLS key file path
 - `TTN_MQTT_BROKER` - TTN MQTT broker URL (optional, for TTN integration)
 - `TTN_USERNAME` - TTN application username (optional)
 - `TTN_PASSWORD` - TTN API key (optional)
@@ -459,7 +466,40 @@ psql -U iotuser -d iotdb -f migrations/003_separate_signal_values.sql
 - `DELETE /signal-values/{id}` - Delete signal value (requires auth)
 - `GET /signals/{signal_id}/values` - Get values for signal (requires auth)
 
-### TTN River Monitoring Endpoints
+### Generic Device Data
+- `POST /devices/data` - Ingest data from any device (API key or device token auth)
+
+### MES: Products
+- `GET /products` - List products (filters: `category`, `active`)
+- `GET /products/{id}` - Get product with BOM
+- `POST /products` - Create product
+- `PUT /products/{id}` - Update product
+- `DELETE /products/{id}` - Delete product
+- `GET /products/{id}/bom` - List BOM entries for product
+- `POST /products/{id}/bom` - Add BOM entry
+
+### MES: Raw Materials
+- `GET /raw-materials` - List raw materials
+- `GET /raw-materials/{id}` - Get raw material
+- `POST /raw-materials` - Create raw material
+- `PUT /raw-materials/{id}` - Update raw material
+- `DELETE /raw-materials/{id}` - Delete raw material
+- `POST /raw-materials/{id}/adjust-stock` - Adjust stock quantity
+
+### MES: Production Orders
+- `GET /production-orders` - List orders (filters: `status`, `product_id`, `device_id`)
+- `GET /production-orders/{id}` - Get order with product/BOM/device
+- `POST /production-orders` - Create order
+- `PUT /production-orders/{id}` - Update order (not status)
+- `DELETE /production-orders/{id}` - Delete order
+- `PUT /production-orders/{id}/status` - Transition status (planned → in_progress → completed/cancelled)
+- `GET /production-orders/{id}/signal-values` - Signal values for linked device within order time range
+
+### MES: Stock & BOM
+- `GET /stock-movements` - List stock movement history
+- `DELETE /bom/{id}` - Delete a BOM entry
+
+### TTN River Monitoring
 - `GET /ttn/uplinks` - List TTN uplinks with filters (device_id, start_date, end_date, limit)
 - `GET /ttn/devices` - List all TTN devices with statistics
 - `GET /ttn/stats` - Get TTN statistics (total uplinks, unique devices, date range)
@@ -551,9 +591,56 @@ docker run -p 8080:8080 \
 
 **Note**: For production deployment, use `docker-compose` (see Docker Deployment section above) which includes PostgreSQL and proper networking.
 
+## Generic Device Data Endpoint
+
+`POST /devices/data` accepts data from any microcontroller or IoT device with a simple JSON format.
+
+**Authentication:** `X-API-Key` header (matched against `DEVICE_API_KEY` env) or `Authorization: Bearer <device_token>`.
+
+**Payload:**
+```json
+{
+  "device_id": "my-sensor-01",
+  "field_1": 23.5,
+  "field_2": true,
+  "field_3": "status-ok"
+}
+```
+
+- Up to 8 fields (`field_1` through `field_8`), any can be omitted
+- Numeric values stored as analogic signals, booleans as digital signals, strings in metadata
+- If the device doesn't exist and `DEVICE_AUTO_CREATE=true`, it's created automatically
+- Signals are auto-created per field name on first use
+
+**Configuration:**
+```env
+DEVICE_API_KEY=your-secret-api-key
+DEVICE_AUTO_CREATE=true
+```
+
+## Embedded MQTT Broker
+
+The API includes an embedded MQTT broker (mochi-mqtt) that devices can connect to directly.
+
+**Features:**
+- Device authentication via username (device name) + password (auth_token)
+- Topic ACL: devices can only publish to `devices/{their-name}/data`
+- Published messages are automatically processed and stored as signal values
+- Same payload format as the generic device endpoint
+- Optional TLS support
+
+**Configuration:**
+```env
+MQTT_BROKER_ENABLED=true
+MQTT_BROKER_PORT=1883
+MQTT_BROKER_TLS_ENABLED=false
+MQTT_BROKER_TLS_CERT=
+MQTT_BROKER_TLS_KEY=
+```
+
 ## TTN MQTT Integration
 
-The API supports automatic data collection from The Things Network (TTN) via MQTT.
+The API supports automatic data collection from The Things Network (TTN) via an external MQTT client.
 
 **Features:**
 - Automatically subscribes to TTN uplink messages
@@ -562,7 +649,6 @@ The API supports automatic data collection from The Things Network (TTN) via MQT
 - Auto-creates Device and Signal entries for TTN devices
 
 **Configuration:**
-Add to `.env`:
 ```env
 TTN_MQTT_BROKER=mqtt://nam1.cloud.thethings.network:1883
 TTN_USERNAME=your-application-id@ttn
