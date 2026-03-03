@@ -35,7 +35,6 @@ go-data-storage/
 │   │   ├── signals_handler.go           # Signal configuration CRUD
 │   │   ├── signal_values_handler.go     # Signal value CRUD with filtering
 │   │   ├── generic_data_handler.go      # Generic device POST endpoint
-│   │   ├── ttn_handler.go              # TTN uplinks, devices, stats
 │   │   ├── products_handler.go          # MES: Product CRUD + BOM
 │   │   ├── raw_materials_handler.go     # MES: Raw material CRUD + stock
 │   │   ├── production_orders_handler.go # MES: Production orders + status
@@ -44,9 +43,15 @@ go-data-storage/
 │   │   └── rfid_user_handler.go         # RFID user lookup
 │   ├── models/
 │   │   └── models.go                    # All data models (GORM)
-│   └── mqtt/
-│       ├── mqtt.go                      # TTN MQTT client
-│       └── broker.go                    # Embedded mochi-mqtt broker
+│   ├── mqtt/
+│   │   └── broker.go                    # Embedded mochi-mqtt broker
+│   └── plugins/
+│       └── ttn/                         # TTN plugin (optional, TTN_ENABLED=true)
+│           ├── plugin.go                # Entry point, config, Register()
+│           ├── client.go                # TTN MQTT client
+│           ├── decoder.go               # Binary payload decoder
+│           ├── handler.go               # MQTT message processing
+│           └── routes.go                # HTTP handlers (/ttn/*)
 ├── migrations/                          # SQL migration files
 ├── infra/                               # Docker Compose, nginx config
 ├── scripts/
@@ -256,9 +261,10 @@ Create `.env` file in the project root. See setup steps above for examples.
 - `MQTT_BROKER_TLS_ENABLED` - Enable TLS for MQTT broker (default: `false`)
 - `MQTT_BROKER_TLS_CERT` - TLS certificate file path
 - `MQTT_BROKER_TLS_KEY` - TLS key file path
-- `TTN_MQTT_BROKER` - TTN MQTT broker URL (optional, for TTN integration)
-- `TTN_USERNAME` - TTN application username (optional)
-- `TTN_PASSWORD` - TTN API key (optional)
+- `TTN_ENABLED` - Enable TTN plugin (default: `false`, set to `true` to activate)
+- `TTN_MQTT_BROKER` - TTN MQTT broker URL (required if TTN enabled)
+- `TTN_USERNAME` - TTN application username (required if TTN enabled)
+- `TTN_PASSWORD` - TTN API key (required if TTN enabled)
 
 ## Commands
 
@@ -499,7 +505,7 @@ psql -U iotuser -d iotdb -f migrations/003_separate_signal_values.sql
 - `GET /stock-movements` - List stock movement history
 - `DELETE /bom/{id}` - Delete a BOM entry
 
-### TTN River Monitoring
+### TTN Plugin (Optional — requires `TTN_ENABLED=true`)
 - `GET /ttn/uplinks` - List TTN uplinks with filters (device_id, start_date, end_date, limit)
 - `GET /ttn/devices` - List all TTN devices with statistics
 - `GET /ttn/stats` - Get TTN statistics (total uplinks, unique devices, date range)
@@ -638,24 +644,26 @@ MQTT_BROKER_TLS_CERT=
 MQTT_BROKER_TLS_KEY=
 ```
 
-## TTN MQTT Integration
+## TTN Plugin (Optional)
 
-The API supports automatic data collection from The Things Network (TTN) via an external MQTT client.
+The API supports automatic data collection from The Things Network (TTN) via an optional plugin. TTN endpoints (`/ttn/*`) are only available when the plugin is enabled.
 
 **Features:**
-- Automatically subscribes to TTN uplink messages
-- Decodes binary sensor payloads (TF02-Pro LiDAR format)
-- Stores data in the database as SignalValue records
+- Automatically subscribes to TTN uplink messages via MQTT
+- Decodes binary sensor payloads (3 formats: legacy 8-byte, Heltec 10-byte, LilyGo 13-byte)
+- Stores data in the database as SignalValue records with rich metadata
 - Auto-creates Device and Signal entries for TTN devices
+- HTTP endpoints for querying uplinks, devices, and statistics
 
 **Configuration:**
 ```env
+TTN_ENABLED=true
 TTN_MQTT_BROKER=mqtt://nam1.cloud.thethings.network:1883
 TTN_USERNAME=your-application-id@ttn
 TTN_PASSWORD=your-ttn-api-key
 ```
 
-The MQTT client will automatically connect on startup if credentials are provided.
+Set `TTN_ENABLED=true` to activate the plugin. When disabled (default), no TTN MQTT connections are made and `/ttn/*` endpoints return 404.
 
 ## Troubleshooting
 

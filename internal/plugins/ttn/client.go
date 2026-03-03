@@ -1,9 +1,8 @@
-package mqtt
+package ttn
 
 import (
 	"fmt"
 	"log"
-	"os"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -11,21 +10,7 @@ import (
 
 var client mqtt.Client
 
-type Config struct {
-	Broker   string
-	Username string
-	Password string
-}
-
-func LoadConfigFromEnv() Config {
-	return Config{
-		Broker:   os.Getenv("TTN_MQTT_BROKER"),
-		Username: os.Getenv("TTN_USERNAME"),
-		Password: os.Getenv("TTN_PASSWORD"),
-	}
-}
-
-func ConnectMQTT(cfg Config, messageHandler func(string, []byte)) error {
+func connectMQTT(cfg Config) error {
 	if cfg.Broker == "" || cfg.Username == "" || cfg.Password == "" {
 		return fmt.Errorf("MQTT configuration incomplete: broker, username, and password are required")
 	}
@@ -46,25 +31,25 @@ func ConnectMQTT(cfg Config, messageHandler func(string, []byte)) error {
 	opts.SetConnectTimeout(30 * time.Second)
 
 	opts.OnConnect = func(c mqtt.Client) {
-		log.Println("[MQTT] Connected to TTN broker")
-		
+		log.Println("[TTN Plugin] Connected to TTN broker")
+
 		token := c.SubscribeMultiple(map[string]byte{
 			uplinkTopic: 1,
 			joinTopic:   1,
 		}, func(client mqtt.Client, msg mqtt.Message) {
-			messageHandler(msg.Topic(), msg.Payload())
+			handleMessage(msg.Topic(), msg.Payload())
 		})
 
 		if token.Wait() && token.Error() != nil {
-			log.Printf("[MQTT] Subscribe error: %v", token.Error())
+			log.Printf("[TTN Plugin] Subscribe error: %v", token.Error())
 		} else {
-			log.Printf("[MQTT] Subscribed to: %s", uplinkTopic)
-			log.Printf("[MQTT] Subscribed to: %s", joinTopic)
+			log.Printf("[TTN Plugin] Subscribed to: %s", uplinkTopic)
+			log.Printf("[TTN Plugin] Subscribed to: %s", joinTopic)
 		}
 	}
 
 	opts.OnConnectionLost = func(c mqtt.Client, err error) {
-		log.Printf("[MQTT] Connection lost: %v", err)
+		log.Printf("[TTN Plugin] Connection lost: %v", err)
 	}
 
 	client = mqtt.NewClient(opts)
@@ -75,13 +60,9 @@ func ConnectMQTT(cfg Config, messageHandler func(string, []byte)) error {
 	return nil
 }
 
-func DisconnectMQTT() {
+func disconnectMQTT() {
 	if client != nil && client.IsConnected() {
 		client.Disconnect(250)
-		log.Println("[MQTT] Disconnected")
+		log.Println("[TTN Plugin] MQTT disconnected")
 	}
-}
-
-func GetClient() mqtt.Client {
-	return client
 }

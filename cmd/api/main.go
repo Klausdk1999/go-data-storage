@@ -9,6 +9,7 @@ import (
 	"data-storage/internal/db"
 	"data-storage/internal/handlers"
 	"data-storage/internal/mqtt"
+	"data-storage/internal/plugins/ttn"
 
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
@@ -29,18 +30,6 @@ func main() {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 
-	// Initialize MQTT connection (if configured)
-	mqttConfig := mqtt.LoadConfigFromEnv()
-	if mqttConfig.Broker != "" && mqttConfig.Username != "" && mqttConfig.Password != "" {
-		err = mqtt.ConnectMQTT(mqttConfig, mqtt.HandleMessage)
-		if err != nil {
-			log.Printf("Warning: Failed to connect to MQTT broker: %v", err)
-			log.Println("Continuing without MQTT - TTN data collection will not work")
-		}
-	} else {
-		log.Println("MQTT not configured - skipping TTN connection")
-	}
-
 	// Start embedded MQTT broker (if configured)
 	brokerConfig := mqtt.LoadBrokerConfigFromEnv()
 	broker, err := mqtt.StartBroker(brokerConfig)
@@ -53,6 +42,10 @@ func main() {
 	}
 
 	r := mux.NewRouter()
+
+	// Initialize TTN plugin (no-ops if TTN_ENABLED != "true")
+	ttnCleanup := ttn.Register(r, auth.RequireUserAuth)
+	defer ttnCleanup()
 
 	// Public endpoints
 	r.HandleFunc("/auth/login", handlers.LoginHandler).Methods("POST")
@@ -101,11 +94,6 @@ func main() {
 
 	// MES: BOM entries
 	r.HandleFunc("/bom/{id}", auth.RequireUserAuth(handlers.BOMEntryHandler)).Methods("DELETE")
-
-	// TTN endpoints
-	r.HandleFunc("/ttn/uplinks", auth.RequireUserAuth(handlers.TTNUplinksHandler)).Methods("GET")
-	r.HandleFunc("/ttn/devices", auth.RequireUserAuth(handlers.TTNDevicesHandler)).Methods("GET")
-	r.HandleFunc("/ttn/stats", auth.RequireUserAuth(handlers.TTNStatsHandler)).Methods("GET")
 
 	// Legacy endpoints for backward compatibility
 	r.HandleFunc("/readings", auth.RequireAnyAuth(handlers.ReadingsHandler))
