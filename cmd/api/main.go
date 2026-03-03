@@ -80,6 +80,27 @@ func main() {
 	r.HandleFunc("/signal-values/{id}", auth.RequireUserAuth(handlers.SignalValueHandler))
 	r.HandleFunc("/signals/{signal_id}/values", auth.RequireUserAuth(handlers.SignalValuesBySignalHandler)).Methods("GET")
 
+	// MES: Products
+	r.HandleFunc("/products", auth.RequireUserAuth(handlers.ProductsHandler))
+	r.HandleFunc("/products/{id}", auth.RequireUserAuth(handlers.ProductHandler))
+	r.HandleFunc("/products/{id}/bom", auth.RequireUserAuth(handlers.ProductBOMHandler))
+
+	// MES: Raw Materials
+	r.HandleFunc("/raw-materials", auth.RequireUserAuth(handlers.RawMaterialsHandler))
+	r.HandleFunc("/raw-materials/{id}", auth.RequireUserAuth(handlers.RawMaterialHandler))
+	r.HandleFunc("/raw-materials/{id}/adjust-stock", auth.RequireUserAuth(handlers.AdjustStockHandler)).Methods("POST")
+
+	// MES: Production Orders
+	r.HandleFunc("/production-orders", auth.RequireUserAuth(handlers.ProductionOrdersHandler))
+	r.HandleFunc("/production-orders/{id}", auth.RequireUserAuth(handlers.ProductionOrderHandler))
+	r.HandleFunc("/production-orders/{id}/status", auth.RequireUserAuth(handlers.UpdateOrderStatusHandler)).Methods("PUT")
+
+	// MES: Stock Movements
+	r.HandleFunc("/stock-movements", auth.RequireUserAuth(handlers.StockMovementsHandler)).Methods("GET")
+
+	// MES: BOM entries
+	r.HandleFunc("/bom/{id}", auth.RequireUserAuth(handlers.BOMEntryHandler)).Methods("DELETE")
+
 	// TTN endpoints
 	r.HandleFunc("/ttn/uplinks", auth.RequireUserAuth(handlers.TTNUplinksHandler)).Methods("GET")
 	r.HandleFunc("/ttn/devices", auth.RequireUserAuth(handlers.TTNDevicesHandler)).Methods("GET")
