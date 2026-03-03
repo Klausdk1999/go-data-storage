@@ -113,3 +113,77 @@ func (j *JSONB) Scan(value interface{}) error {
 	return json.Unmarshal(bytes, j)
 }
 
+// Product represents a manufactured product
+type Product struct {
+	ID          uint              `gorm:"primaryKey" json:"id,omitempty"`
+	Name        string            `gorm:"not null" json:"name"`
+	SKU         string            `gorm:"uniqueIndex" json:"sku,omitempty"`
+	Description string            `json:"description,omitempty"`
+	Unit        string            `json:"unit,omitempty"`
+	Category    string            `json:"category,omitempty"`
+	IsActive    bool              `gorm:"default:true" json:"is_active"`
+	Metadata    JSONB             `gorm:"type:jsonb" json:"metadata,omitempty"`
+	BOM         []BillOfMaterials `gorm:"foreignKey:ProductID" json:"bom,omitempty"`
+	CreatedAt   time.Time         `json:"created_at,omitempty"`
+	UpdatedAt   time.Time         `json:"updated_at,omitempty"`
+}
+
+// RawMaterial represents raw material in stock
+type RawMaterial struct {
+	ID            uint      `gorm:"primaryKey" json:"id,omitempty"`
+	Name          string    `gorm:"not null" json:"name"`
+	SKU           string    `gorm:"uniqueIndex" json:"sku,omitempty"`
+	Description   string    `json:"description,omitempty"`
+	Unit          string    `json:"unit,omitempty"`
+	StockQuantity float64   `gorm:"default:0" json:"stock_quantity"`
+	MinStock      *float64  `json:"min_stock,omitempty"`
+	Category      string    `json:"category,omitempty"`
+	IsActive      bool      `gorm:"default:true" json:"is_active"`
+	Metadata      JSONB     `gorm:"type:jsonb" json:"metadata,omitempty"`
+	CreatedAt     time.Time `json:"created_at,omitempty"`
+	UpdatedAt     time.Time `json:"updated_at,omitempty"`
+}
+
+// BillOfMaterials links a product to its raw materials
+type BillOfMaterials struct {
+	ID            uint         `gorm:"primaryKey" json:"id,omitempty"`
+	ProductID     uint         `gorm:"not null;index" json:"product_id"`
+	Product       *Product     `gorm:"foreignKey:ProductID" json:"product,omitempty"`
+	RawMaterialID uint         `gorm:"not null;index" json:"raw_material_id"`
+	RawMaterial   *RawMaterial `gorm:"foreignKey:RawMaterialID" json:"raw_material,omitempty"`
+	Quantity      float64      `gorm:"not null" json:"quantity"`
+	CreatedAt     time.Time    `json:"created_at,omitempty"`
+	UpdatedAt     time.Time    `json:"updated_at,omitempty"`
+}
+
+// ProductionOrder represents a manufacturing order
+type ProductionOrder struct {
+	ID               uint       `gorm:"primaryKey" json:"id,omitempty"`
+	ProductID        uint       `gorm:"not null;index" json:"product_id"`
+	Product          *Product   `gorm:"foreignKey:ProductID" json:"product,omitempty"`
+	Quantity         float64    `gorm:"not null" json:"quantity"`
+	Status           string     `gorm:"not null;default:'planned'" json:"status"`
+	Priority         int        `gorm:"default:0" json:"priority,omitempty"`
+	DeviceID         *uint      `gorm:"index" json:"device_id,omitempty"`
+	Device           *Device    `gorm:"foreignKey:DeviceID" json:"device,omitempty"`
+	WorkInstructions string     `json:"work_instructions,omitempty"`
+	QualityNotes     string     `json:"quality_notes,omitempty"`
+	StartedAt        *time.Time `json:"started_at,omitempty"`
+	CompletedAt      *time.Time `json:"completed_at,omitempty"`
+	Metadata         JSONB      `gorm:"type:jsonb" json:"metadata,omitempty"`
+	CreatedAt        time.Time  `json:"created_at,omitempty"`
+	UpdatedAt        time.Time  `json:"updated_at,omitempty"`
+}
+
+// StockMovement tracks stock changes for raw materials
+type StockMovement struct {
+	ID                uint         `gorm:"primaryKey" json:"id,omitempty"`
+	RawMaterialID     uint         `gorm:"not null;index" json:"raw_material_id"`
+	RawMaterial       *RawMaterial `gorm:"foreignKey:RawMaterialID" json:"raw_material,omitempty"`
+	ProductionOrderID *uint        `gorm:"index" json:"production_order_id,omitempty"`
+	MovementType      string       `gorm:"not null" json:"movement_type"`
+	Quantity          float64      `gorm:"not null" json:"quantity"`
+	Notes             string       `json:"notes,omitempty"`
+	CreatedAt         time.Time    `json:"created_at,omitempty"`
+}
+
