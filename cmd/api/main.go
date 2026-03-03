@@ -41,6 +41,17 @@ func main() {
 		log.Println("MQTT not configured - skipping TTN connection")
 	}
 
+	// Start embedded MQTT broker (if configured)
+	brokerConfig := mqtt.LoadBrokerConfigFromEnv()
+	broker, err := mqtt.StartBroker(brokerConfig)
+	if err != nil {
+		log.Printf("Warning: Failed to start embedded MQTT broker: %v", err)
+		log.Println("Continuing without embedded MQTT broker")
+	}
+	if broker != nil {
+		defer broker.Close()
+	}
+
 	r := mux.NewRouter()
 
 	// Public endpoints
