@@ -359,3 +359,55 @@ func deleteProductionOrder(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// OrderSignalValuesHandler returns signal values for the device linked to an order,
+// filtered by the order's active time range
+func OrderSignalValuesHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	vars := mux.Vars(r)
+	id, err := strconv.ParseUint(vars["id"], 10, 32)
+	if err != nil {
+		http.Error(w, "Invalid order ID", http.StatusBadRequest)
+		return
+	}
+
+	var order models.ProductionOrder
+	if db.GetDB().First(&order, id).Error != nil {
+		http.Error(w, "Production order not found", http.StatusNotFound)
+		return
+	}
+
+	if order.DeviceID == nil {
+		http.Error(w, "Order has no linked device", http.StatusBadRequest)
+		return
+	}
+
+	// Get signals for the device
+	var signals []models.Signal
+	db.GetDB().Where("device_id = ?", *order.DeviceID).Find(&signals)
+
+	signalIDs := make([]uint, len(signals))
+	for i, s := range signals {
+		signalIDs[i] = s.ID
+	}
+
+	// Query signal values within the order's time range
+	query := db.GetDB().Where("signal_id IN ?", signalIDs).Preload("Signal").Order("timestamp ASC")
+
+	if order.StartedAt != nil {
+		query = query.Where("timestamp >= ?", *order.StartedAt)
+	}
+	if order.CompletedAt != nil {
+		query = query.Where("timestamp <= ?", *order.CompletedAt)
+	}
+
+	var values []models.SignalValue
+	query.Find(&values)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(values)
+}

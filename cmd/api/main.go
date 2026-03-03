@@ -94,6 +94,7 @@ func main() {
 	r.HandleFunc("/production-orders", auth.RequireUserAuth(handlers.ProductionOrdersHandler))
 	r.HandleFunc("/production-orders/{id}", auth.RequireUserAuth(handlers.ProductionOrderHandler))
 	r.HandleFunc("/production-orders/{id}/status", auth.RequireUserAuth(handlers.UpdateOrderStatusHandler)).Methods("PUT")
+	r.HandleFunc("/production-orders/{id}/signal-values", auth.RequireUserAuth(handlers.OrderSignalValuesHandler)).Methods("GET")
 
 	// MES: Stock Movements
 	r.HandleFunc("/stock-movements", auth.RequireUserAuth(handlers.StockMovementsHandler)).Methods("GET")
