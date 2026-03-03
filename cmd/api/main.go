@@ -79,10 +79,13 @@ func main() {
 	r.HandleFunc("/readings/{user_id}", handlers.UserReadingsHandler)
 	r.HandleFunc("/users/rfid/{rfid}", handlers.GetUserByRFIDHandler)
 
+	// Generic device data endpoint (API key or device token auth)
+	r.HandleFunc("/devices/data", handlers.GenericDataHandler).Methods("POST")
+
 	c := cors.New(cors.Options{
 		AllowedOrigins: []string{"*"},
 		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders: []string{"Accept", "Content-Type", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "Authorization"},
+		AllowedHeaders: []string{"Accept", "Content-Type", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "Authorization", "X-API-Key"},
 		Debug:          true,
 	})
 
