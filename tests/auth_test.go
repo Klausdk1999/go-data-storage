@@ -9,7 +9,7 @@ func TestGenerateJWT(t *testing.T) {
 	userID := uint(1)
 	email := "test@example.com"
 
-	token, err := GenerateJWT(userID, email)
+	token, err := GenerateJWT(userID, email, "user")
 	if err != nil {
 		t.Fatalf("GenerateJWT failed: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestValidateJWT_ExpiredToken(t *testing.T) {
 	userID := uint(1)
 	email := "test@example.com"
 
-	token, err := GenerateJWT(userID, email)
+	token, err := GenerateJWT(userID, email, "user")
 	if err != nil {
 		t.Fatalf("GenerateJWT failed: %v", err)
 	}

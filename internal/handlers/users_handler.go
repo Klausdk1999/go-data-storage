@@ -47,12 +47,11 @@ func getAllUsers(w http.ResponseWriter, r *http.Request) {
 func createUser(w http.ResponseWriter, r *http.Request) {
 	var user models.User
 	var userData struct {
-		Name      string `json:"name"`
-		Email     string `json:"email"`
-		Password  string `json:"password"`
-		Categoria string `json:"categoria"`
-		Matricula string `json:"matricula"`
-		Rfid      string `json:"rfid"`
+		Name     string `json:"name"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+		Type     string `json:"type"`
+		Rfid     string `json:"rfid"`
 	}
 
 	err := json.NewDecoder(r.Body).Decode(&userData)
@@ -63,8 +62,7 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 
 	user.Name = userData.Name
 	user.Email = userData.Email
-	user.Categoria = userData.Categoria
-	user.Matricula = userData.Matricula
+	user.Type = userData.Type
 	user.Rfid = userData.Rfid
 
 	// Hash password if provided
@@ -164,13 +162,12 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var updateData struct {
-		Name      string `json:"name"`
-		Email     string `json:"email"`
-		Password  string `json:"password"`
-		Categoria string `json:"categoria"`
-		Matricula string `json:"matricula"`
-		Rfid      string `json:"rfid"`
-		IsActive  *bool  `json:"is_active"`
+		Name     string `json:"name"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+		Type     string `json:"type"`
+		Rfid     string `json:"rfid"`
+		IsActive *bool  `json:"is_active"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&updateData); err != nil {
@@ -185,11 +182,8 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
 	if updateData.Email != "" {
 		user.Email = updateData.Email
 	}
-	if updateData.Categoria != "" {
-		user.Categoria = updateData.Categoria
-	}
-	if updateData.Matricula != "" {
-		user.Matricula = updateData.Matricula
+	if updateData.Type != "" {
+		user.Type = updateData.Type
 	}
 	if updateData.Rfid != "" {
 		user.Rfid = updateData.Rfid

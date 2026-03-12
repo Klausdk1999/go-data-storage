@@ -33,6 +33,7 @@ type Claims struct {
 	UserID   uint   `json:"user_id"`
 	Email    string `json:"email"`
 	UserType string `json:"user_type"` // "user" or "device"
+	UserRole string `json:"user_role,omitempty"`
 	DeviceID uint   `json:"device_id,omitempty"`
 	jwt.RegisteredClaims
 }
@@ -48,12 +49,13 @@ func GenerateDeviceToken() (string, error) {
 }
 
 // GenerateJWT generates a JWT token for a user
-func GenerateJWT(userID uint, email string) (string, error) {
+func GenerateJWT(userID uint, email string, role string) (string, error) {
 	expirationTime := time.Now().Add(24 * time.Hour)
 	claims := &Claims{
 		UserID:   userID,
 		Email:    email,
 		UserType: "user",
+		UserRole: role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expirationTime),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -121,9 +123,22 @@ func RequireUserAuth(next http.HandlerFunc) http.HandlerFunc {
 		// Store user info in request context (can be accessed in handlers)
 		r.Header.Set("X-User-ID", strconv.FormatUint(uint64(claims.UserID), 10))
 		r.Header.Set("X-User-Email", claims.Email)
+		r.Header.Set("X-User-Role", claims.UserRole)
 
 		next(w, r)
 	}
+}
+
+// RequireAdmin wraps RequireUserAuth and additionally checks for admin role
+func RequireAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return RequireUserAuth(func(w http.ResponseWriter, r *http.Request) {
+		role := r.Header.Get("X-User-Role")
+		if role != "admin" {
+			http.Error(w, "Admin access required", http.StatusForbidden)
+			return
+		}
+		next(w, r)
+	})
 }
 
 // Middleware: RequireDeviceAuth requires a valid device auth token

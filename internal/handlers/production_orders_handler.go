@@ -28,6 +28,10 @@ func ProductionOrdersHandler(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		getAllProductionOrders(w, r)
 	case "POST":
+		if r.Header.Get("X-User-Role") != "admin" {
+			http.Error(w, "Admin access required", http.StatusForbidden)
+			return
+		}
 		createProductionOrder(w, r)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -40,8 +44,16 @@ func ProductionOrderHandler(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		getProductionOrder(w, r)
 	case "PUT":
+		if r.Header.Get("X-User-Role") != "admin" {
+			http.Error(w, "Admin access required", http.StatusForbidden)
+			return
+		}
 		updateProductionOrder(w, r)
 	case "DELETE":
+		if r.Header.Get("X-User-Role") != "admin" {
+			http.Error(w, "Admin access required", http.StatusForbidden)
+			return
+		}
 		deleteProductionOrder(w, r)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -173,7 +185,7 @@ func decrementStock(tx *gorm.DB, order *models.ProductionOrder) error {
 
 func getAllProductionOrders(w http.ResponseWriter, r *http.Request) {
 	var orders []models.ProductionOrder
-	query := db.GetDB().Preload("Product").Preload("Device")
+	query := db.GetDB().Preload("Product").Preload("Device").Preload("Customer")
 
 	if status := r.URL.Query().Get("status"); status != "" {
 		query = query.Where("status = ?", status)
@@ -185,6 +197,10 @@ func getAllProductionOrders(w http.ResponseWriter, r *http.Request) {
 
 	if deviceID := r.URL.Query().Get("device_id"); deviceID != "" {
 		query = query.Where("device_id = ?", deviceID)
+	}
+
+	if customerID := r.URL.Query().Get("customer_id"); customerID != "" {
+		query = query.Where("customer_id = ?", customerID)
 	}
 
 	query = query.Order("priority DESC, created_at DESC")
@@ -201,11 +217,16 @@ func getAllProductionOrders(w http.ResponseWriter, r *http.Request) {
 }
 
 func createProductionOrder(w http.ResponseWriter, r *http.Request) {
-	var order models.ProductionOrder
-	if err := json.NewDecoder(r.Body).Decode(&order); err != nil {
+	var req struct {
+		models.ProductionOrder
+		CustomerName string `json:"customer_name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
+
+	order := req.ProductionOrder
 
 	if order.ProductID == 0 {
 		http.Error(w, "product_id is required", http.StatusBadRequest)
@@ -229,6 +250,17 @@ func createProductionOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Find or create customer by name
+	if req.CustomerName != "" {
+		customer, err := findOrCreateCustomer(req.CustomerName)
+		if err != nil {
+			log.Printf("Error finding/creating customer: %v", err)
+			http.Error(w, "Error processing customer", http.StatusInternalServerError)
+			return
+		}
+		order.CustomerID = &customer.ID
+	}
+
 	// Default status
 	if order.Status == "" {
 		order.Status = "planned"
@@ -245,6 +277,9 @@ func createProductionOrder(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error creating production order", http.StatusInternalServerError)
 		return
 	}
+
+	// Reload with associations
+	db.GetDB().Preload("Product").Preload("Device").Preload("Customer").First(&order, order.ID)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -266,7 +301,7 @@ func getProductionOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var order models.ProductionOrder
-	result := db.GetDB().Preload("Product.BOM.RawMaterial").Preload("Device").First(&order, id)
+	result := db.GetDB().Preload("Product.BOM.RawMaterial").Preload("Device").Preload("Customer").First(&order, id)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
 			http.Error(w, "Production order not found", http.StatusNotFound)
@@ -306,19 +341,39 @@ func updateProductionOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var updateData models.ProductionOrder
-	if err := json.NewDecoder(r.Body).Decode(&updateData); err != nil {
+	var updateReq struct {
+		models.ProductionOrder
+		CustomerName *string `json:"customer_name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&updateReq); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
 	// Update fields but NOT status (that uses the status endpoint)
-	order.Quantity = updateData.Quantity
-	order.Priority = updateData.Priority
-	order.DeviceID = updateData.DeviceID
-	order.WorkInstructions = updateData.WorkInstructions
-	order.QualityNotes = updateData.QualityNotes
-	order.Metadata = updateData.Metadata
+	order.Quantity = updateReq.Quantity
+	order.Priority = updateReq.Priority
+	order.DeviceID = updateReq.DeviceID
+	order.WorkInstructions = updateReq.WorkInstructions
+	order.QualityNotes = updateReq.QualityNotes
+	order.StartedAt = updateReq.StartedAt
+	order.CompletedAt = updateReq.CompletedAt
+	order.Metadata = updateReq.Metadata
+
+	// Handle customer: find or create by name
+	if updateReq.CustomerName != nil {
+		if *updateReq.CustomerName == "" {
+			order.CustomerID = nil
+		} else {
+			customer, err := findOrCreateCustomer(*updateReq.CustomerName)
+			if err != nil {
+				log.Printf("Error finding/creating customer: %v", err)
+				http.Error(w, "Error processing customer", http.StatusInternalServerError)
+				return
+			}
+			order.CustomerID = &customer.ID
+		}
+	}
 
 	result = db.GetDB().Save(&order)
 	if result.Error != nil {

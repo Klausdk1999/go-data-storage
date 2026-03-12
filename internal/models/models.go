@@ -14,8 +14,7 @@ type User struct {
 	Name         string    `gorm:"not null" json:"name"`
 	Email        string    `gorm:"uniqueIndex" json:"email,omitempty"`
 	PasswordHash string    `gorm:"column:password_hash" json:"-"` // Never return in JSON
-	Categoria    string    `json:"categoria,omitempty"`
-	Matricula    string    `json:"matricula,omitempty"`
+	Type         string    `gorm:"column:type;default:'worker';check:type IN ('admin','worker')" json:"type,omitempty"`
 	Rfid         string    `gorm:"uniqueIndex" json:"rfid,omitempty"`
 	IsActive     bool      `gorm:"default:true" json:"is_active,omitempty"`
 	Devices      []Device  `gorm:"foreignKey:UserID" json:"devices,omitempty"`
@@ -156,11 +155,21 @@ type BillOfMaterials struct {
 	UpdatedAt     time.Time    `json:"updated_at,omitempty"`
 }
 
+// Customer represents a customer for production orders
+type Customer struct {
+	ID        uint      `gorm:"primaryKey" json:"id,omitempty"`
+	Name      string    `gorm:"not null;uniqueIndex" json:"name"`
+	CreatedAt time.Time `json:"created_at,omitempty"`
+	UpdatedAt time.Time `json:"updated_at,omitempty"`
+}
+
 // ProductionOrder represents a manufacturing order
 type ProductionOrder struct {
 	ID               uint       `gorm:"primaryKey" json:"id,omitempty"`
 	ProductID        uint       `gorm:"not null;index" json:"product_id"`
 	Product          *Product   `gorm:"foreignKey:ProductID" json:"product,omitempty"`
+	CustomerID       *uint      `gorm:"index" json:"customer_id,omitempty"`
+	Customer         *Customer  `gorm:"foreignKey:CustomerID" json:"customer,omitempty"`
 	Quantity         float64    `gorm:"not null" json:"quantity"`
 	Status           string     `gorm:"not null;default:'planned'" json:"status"`
 	Priority         int        `gorm:"default:0" json:"priority,omitempty"`
@@ -185,5 +194,33 @@ type StockMovement struct {
 	Quantity          float64      `gorm:"not null" json:"quantity"`
 	Notes             string       `json:"notes,omitempty"`
 	CreatedAt         time.Time    `json:"created_at,omitempty"`
+}
+
+// Service represents a type of work/service that can be performed
+type Service struct {
+	ID          uint      `gorm:"primaryKey" json:"id,omitempty"`
+	Code        string    `gorm:"uniqueIndex;not null" json:"code"`
+	Name        string    `gorm:"not null" json:"name"`
+	Description string    `json:"description,omitempty"`
+	IsActive    bool      `gorm:"default:true" json:"is_active"`
+	CreatedAt   time.Time `json:"created_at,omitempty"`
+	UpdatedAt   time.Time `json:"updated_at,omitempty"`
+}
+
+// TimeEntry represents a time tracking entry for a user working on a production order
+type TimeEntry struct {
+	ID                uint             `gorm:"primaryKey" json:"id,omitempty"`
+	UserID            uint             `gorm:"not null;index" json:"user_id"`
+	User              *User            `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	ProductionOrderID uint             `gorm:"not null;index" json:"production_order_id"`
+	ProductionOrder   *ProductionOrder `gorm:"foreignKey:ProductionOrderID" json:"production_order,omitempty"`
+	ServiceID         uint             `gorm:"not null;index" json:"service_id"`
+	Service           *Service         `gorm:"foreignKey:ServiceID" json:"service,omitempty"`
+	Day               string           `gorm:"not null" json:"day"`
+	StartTime         string           `gorm:"not null" json:"start_time"`
+	EndTime           string           `gorm:"not null" json:"end_time"`
+	Observations      string           `json:"observations,omitempty"`
+	CreatedAt         time.Time        `json:"created_at,omitempty"`
+	UpdatedAt         time.Time        `json:"updated_at,omitempty"`
 }
 

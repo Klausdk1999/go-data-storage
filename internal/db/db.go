@@ -114,8 +114,11 @@ func InitDB(cfg Config) (*gorm.DB, error) {
 		&models.Product{},
 		&models.RawMaterial{},
 		&models.BillOfMaterials{},
+		&models.Customer{},
 		&models.ProductionOrder{},
 		&models.StockMovement{},
+		&models.Service{},
+		&models.TimeEntry{},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error migrating database: %w", err)

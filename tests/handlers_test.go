@@ -131,7 +131,7 @@ func TestRegisterDeviceHandler(t *testing.T) {
 	testDB.Create(&user)
 
 	// Generate JWT token
-	token, err := GenerateJWT(user.ID, user.Email)
+	token, err := GenerateJWT(user.ID, user.Email, "user")
 	if err != nil {
 		t.Fatalf("Failed to generate token: %v", err)
 	}

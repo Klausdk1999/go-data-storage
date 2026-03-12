@@ -50,50 +50,61 @@ func main() {
 	// Public endpoints
 	r.HandleFunc("/auth/login", handlers.LoginHandler).Methods("POST")
 
-	// User authenticated endpoints
-	r.HandleFunc("/auth/register-device", auth.RequireUserAuth(handlers.RegisterDeviceHandler)).Methods("POST")
-	r.HandleFunc("/users", auth.RequireUserAuth(handlers.UsersHandler))
-	r.HandleFunc("/users/{id}", auth.RequireUserAuth(handlers.UserHandler))
-	r.HandleFunc("/devices", auth.RequireUserAuth(handlers.DevicesHandler))
-	r.HandleFunc("/devices/{id}", auth.RequireUserAuth(handlers.DeviceHandler))
-	
-	// Signal configurations (requires user auth)
-	r.HandleFunc("/signals", auth.RequireUserAuth(handlers.SignalsHandler))
-	r.HandleFunc("/signals/{id}", auth.RequireUserAuth(handlers.SignalHandler))
-	r.HandleFunc("/devices/{device_id}/signals", auth.RequireUserAuth(handlers.DeviceSignalsHandler)).Methods("GET")
+	// Admin-only endpoints
+	r.HandleFunc("/auth/register-device", auth.RequireAdmin(handlers.RegisterDeviceHandler)).Methods("POST")
+	r.HandleFunc("/users", auth.RequireAdmin(handlers.UsersHandler))
+	r.HandleFunc("/users/{id}", auth.RequireAdmin(handlers.UserHandler))
+	r.HandleFunc("/devices", auth.RequireAdmin(handlers.DevicesHandler))
+	r.HandleFunc("/devices/{id}", auth.RequireAdmin(handlers.DeviceHandler))
+
+	// Signal configurations (admin only)
+	r.HandleFunc("/signals", auth.RequireAdmin(handlers.SignalsHandler))
+	r.HandleFunc("/signals/{id}", auth.RequireAdmin(handlers.SignalHandler))
+	r.HandleFunc("/devices/{device_id}/signals", auth.RequireAdmin(handlers.DeviceSignalsHandler)).Methods("GET")
 	
 	// Signal values - GET requires user auth, POST allows both user and device auth
 	r.HandleFunc("/signal-values", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" {
 			auth.RequireAnyAuth(handlers.CreateSignalValue)(w, r)
 		} else {
-			auth.RequireUserAuth(handlers.SignalValuesHandler)(w, r)
+			auth.RequireAdmin(handlers.SignalValuesHandler)(w, r)
 		}
 	})
-	r.HandleFunc("/signal-values/{id}", auth.RequireUserAuth(handlers.SignalValueHandler))
-	r.HandleFunc("/signals/{signal_id}/values", auth.RequireUserAuth(handlers.SignalValuesBySignalHandler)).Methods("GET")
+	r.HandleFunc("/signal-values/{id}", auth.RequireAdmin(handlers.SignalValueHandler))
+	r.HandleFunc("/signals/{signal_id}/values", auth.RequireAdmin(handlers.SignalValuesBySignalHandler)).Methods("GET")
 
-	// MES: Products
-	r.HandleFunc("/products", auth.RequireUserAuth(handlers.ProductsHandler))
-	r.HandleFunc("/products/{id}", auth.RequireUserAuth(handlers.ProductHandler))
-	r.HandleFunc("/products/{id}/bom", auth.RequireUserAuth(handlers.ProductBOMHandler))
+	// MES: Products (admin only)
+	r.HandleFunc("/products", auth.RequireAdmin(handlers.ProductsHandler))
+	r.HandleFunc("/products/{id}", auth.RequireAdmin(handlers.ProductHandler))
+	r.HandleFunc("/products/{id}/bom", auth.RequireAdmin(handlers.ProductBOMHandler))
 
-	// MES: Raw Materials
-	r.HandleFunc("/raw-materials", auth.RequireUserAuth(handlers.RawMaterialsHandler))
-	r.HandleFunc("/raw-materials/{id}", auth.RequireUserAuth(handlers.RawMaterialHandler))
-	r.HandleFunc("/raw-materials/{id}/adjust-stock", auth.RequireUserAuth(handlers.AdjustStockHandler)).Methods("POST")
+	// MES: Raw Materials (admin only)
+	r.HandleFunc("/raw-materials", auth.RequireAdmin(handlers.RawMaterialsHandler))
+	r.HandleFunc("/raw-materials/{id}", auth.RequireAdmin(handlers.RawMaterialHandler))
+	r.HandleFunc("/raw-materials/{id}/adjust-stock", auth.RequireAdmin(handlers.AdjustStockHandler)).Methods("POST")
+
+	// MES: Customers (admin only)
+	r.HandleFunc("/customers", auth.RequireAdmin(handlers.CustomersHandler))
 
 	// MES: Production Orders
 	r.HandleFunc("/production-orders", auth.RequireUserAuth(handlers.ProductionOrdersHandler))
 	r.HandleFunc("/production-orders/{id}", auth.RequireUserAuth(handlers.ProductionOrderHandler))
-	r.HandleFunc("/production-orders/{id}/status", auth.RequireUserAuth(handlers.UpdateOrderStatusHandler)).Methods("PUT")
-	r.HandleFunc("/production-orders/{id}/signal-values", auth.RequireUserAuth(handlers.OrderSignalValuesHandler)).Methods("GET")
+	r.HandleFunc("/production-orders/{id}/status", auth.RequireAdmin(handlers.UpdateOrderStatusHandler)).Methods("PUT")
+	r.HandleFunc("/production-orders/{id}/signal-values", auth.RequireAdmin(handlers.OrderSignalValuesHandler)).Methods("GET")
 
 	// MES: Stock Movements
-	r.HandleFunc("/stock-movements", auth.RequireUserAuth(handlers.StockMovementsHandler)).Methods("GET")
+	r.HandleFunc("/stock-movements", auth.RequireAdmin(handlers.StockMovementsHandler)).Methods("GET")
 
 	// MES: BOM entries
-	r.HandleFunc("/bom/{id}", auth.RequireUserAuth(handlers.BOMEntryHandler)).Methods("DELETE")
+	r.HandleFunc("/bom/{id}", auth.RequireAdmin(handlers.BOMEntryHandler)).Methods("DELETE")
+
+	// MES: Services
+	r.HandleFunc("/services", auth.RequireUserAuth(handlers.ServicesHandler))
+	r.HandleFunc("/services/{id}", auth.RequireUserAuth(handlers.ServiceHandler))
+
+	// MES: Time Entries
+	r.HandleFunc("/time-entries", auth.RequireUserAuth(handlers.TimeEntriesHandler))
+	r.HandleFunc("/time-entries/{id}", auth.RequireUserAuth(handlers.TimeEntryHandler))
 
 	// Legacy endpoints for backward compatibility
 	r.HandleFunc("/readings", auth.RequireAnyAuth(handlers.ReadingsHandler))

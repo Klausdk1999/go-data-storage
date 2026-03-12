@@ -61,7 +61,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate JWT token
-	token, err := auth.GenerateJWT(user.ID, user.Email)
+	token, err := auth.GenerateJWT(user.ID, user.Email, user.Type)
 	if err != nil {
 		log.Printf("Error generating JWT: %v", err)
 		http.Error(w, "Error generating token", http.StatusInternalServerError)
