@@ -1,11 +1,14 @@
-package main
+package tests
 
 import (
 	"testing"
+
+	"data-storage/internal/auth"
+	"data-storage/internal/models"
 )
 
 func TestUser_SetPassword(t *testing.T) {
-	user := User{}
+	user := models.User{}
 	password := "testpassword123"
 
 	err := user.SetPassword(password)
@@ -23,7 +26,7 @@ func TestUser_SetPassword(t *testing.T) {
 }
 
 func TestUser_CheckPassword(t *testing.T) {
-	user := User{}
+	user := models.User{}
 	password := "testpassword123"
 
 	err := user.SetPassword(password)
@@ -43,7 +46,7 @@ func TestUser_CheckPassword(t *testing.T) {
 }
 
 func TestGenerateDeviceToken(t *testing.T) {
-	token1, err := GenerateDeviceToken()
+	token1, err := auth.GenerateDeviceToken()
 	if err != nil {
 		t.Fatalf("GenerateDeviceToken failed: %v", err)
 	}
@@ -53,7 +56,7 @@ func TestGenerateDeviceToken(t *testing.T) {
 	}
 
 	// Generate another token and verify they're different
-	token2, err := GenerateDeviceToken()
+	token2, err := auth.GenerateDeviceToken()
 	if err != nil {
 		t.Fatalf("GenerateDeviceToken failed: %v", err)
 	}
@@ -67,4 +70,3 @@ func TestGenerateDeviceToken(t *testing.T) {
 		t.Error("Token should be sufficiently long")
 	}
 }
-
