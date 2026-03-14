@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"data-storage/internal/models"
 	"gorm.io/driver/postgres"
@@ -18,20 +19,21 @@ import (
 var DB *gorm.DB
 
 type Config struct {
-	Type     string // "postgres" or "sqlite"
-	Host     string
-	Port     int
-	User     string
-	Password string
-	DBName   string
-	Path     string // For SQLite: file path
-	SSLMode  string // For PostgreSQL: SSL mode (disable, require, verify-full)
+	Type        string // "postgres" or "sqlite"
+	Host        string
+	Port        int
+	User        string
+	Password    string
+	DBName      string
+	Path        string // For SQLite: file path
+	SSLMode     string // For PostgreSQL: SSL mode (disable, require, verify-full)
+	DatabaseURL string // Full connection string (takes priority over individual fields)
 }
 
 func LoadConfigFromEnv() Config {
 	dbType := strings.ToLower(os.Getenv("DB_TYPE"))
 	if dbType == "" {
-		dbType = "postgres" // Default to postgres
+		dbType = "postgres"
 	}
 
 	portStr := os.Getenv("DB_PORT")
@@ -46,14 +48,15 @@ func LoadConfigFromEnv() Config {
 	}
 
 	return Config{
-		Type:     dbType,
-		Host:     os.Getenv("DB_HOST"),
-		Port:     port,
-		User:     os.Getenv("DB_USER"),
-		Password: os.Getenv("DB_PASSWORD"),
-		DBName:   os.Getenv("DB_NAME"),
-		Path:     os.Getenv("DB_PATH"),
-		SSLMode:  sslMode,
+		Type:        dbType,
+		Host:        os.Getenv("DB_HOST"),
+		Port:        port,
+		User:        os.Getenv("DB_USER"),
+		Password:    os.Getenv("DB_PASSWORD"),
+		DBName:      os.Getenv("DB_NAME"),
+		Path:        os.Getenv("DB_PATH"),
+		SSLMode:     sslMode,
+		DatabaseURL: os.Getenv("DATABASE_URL"),
 	}
 }
 
@@ -82,19 +85,24 @@ func InitDB(cfg Config) (*gorm.DB, error) {
 		}
 		log.Printf("Connected to SQLite database at: %s", cfg.Path)
 	} else {
-		// PostgreSQL configuration
-		if cfg.Host == "" {
-			cfg.Host = "localhost"
-		}
-		if cfg.User == "" {
-			cfg.User = "postgres"
-		}
-		if cfg.DBName == "" {
-			cfg.DBName = "iotdb"
-		}
+		// PostgreSQL configuration — DATABASE_URL takes priority
+		if cfg.DatabaseURL != "" {
+			dsn = cfg.DatabaseURL
+			log.Println("Using DATABASE_URL for PostgreSQL connection")
+		} else {
+			if cfg.Host == "" {
+				cfg.Host = "localhost"
+			}
+			if cfg.User == "" {
+				cfg.User = "postgres"
+			}
+			if cfg.DBName == "" {
+				cfg.DBName = "iotdb"
+			}
 
-		dsn = fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-			cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode)
+			dsn = fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+				cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode)
+		}
 
 		DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
 			Logger: logger.Default.LogMode(logger.Info),
@@ -102,7 +110,22 @@ func InitDB(cfg Config) (*gorm.DB, error) {
 		if err != nil {
 			return nil, fmt.Errorf("error connecting to PostgreSQL database: %w", err)
 		}
-		log.Printf("Connected to PostgreSQL database: %s@%s:%d/%s", cfg.User, cfg.Host, cfg.Port, cfg.DBName)
+
+		// Configure connection pool (important for serverless databases like Neon)
+		sqlDB, err := DB.DB()
+		if err != nil {
+			return nil, fmt.Errorf("error getting underlying sql.DB: %w", err)
+		}
+		sqlDB.SetMaxOpenConns(10)
+		sqlDB.SetMaxIdleConns(5)
+		sqlDB.SetConnMaxLifetime(30 * time.Minute)
+		sqlDB.SetConnMaxIdleTime(5 * time.Minute)
+
+		if cfg.DatabaseURL != "" {
+			log.Println("Connected to PostgreSQL via DATABASE_URL")
+		} else {
+			log.Printf("Connected to PostgreSQL database: %s@%s:%d/%s", cfg.User, cfg.Host, cfg.Port, cfg.DBName)
+		}
 	}
 
 	// Auto-migrate the schema
