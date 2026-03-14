@@ -358,6 +358,7 @@ func updateProductionOrder(w http.ResponseWriter, r *http.Request) {
 	order.QualityNotes = updateReq.QualityNotes
 	order.StartedAt = updateReq.StartedAt
 	order.CompletedAt = updateReq.CompletedAt
+	order.PlannedDeliveryDate = updateReq.PlannedDeliveryDate
 	order.Metadata = updateReq.Metadata
 
 	// Handle customer: find or create by name
