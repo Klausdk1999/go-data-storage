@@ -82,11 +82,35 @@ func AdjustStockHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newQty := material.StockQuantity + req.Quantity
-	if newQty < 0 {
-		tx.Rollback()
-		http.Error(w, "Stock would go negative", http.StatusBadRequest)
-		return
+	var newQty float64
+
+	switch req.MovementType {
+		case "in":
+			// Entrada: soma ao estoque atual
+			newQty = material.StockQuantity + req.Quantity
+
+		case "out":
+			// Saída: subtrai do estoque atual
+			newQty = material.StockQuantity - req.Quantity
+			if newQty < 0 {
+				tx.Rollback()
+				http.Error(w, "Stock would go negative", http.StatusBadRequest)
+				return
+			}
+
+		case "adjustment":
+			// Ajuste: seta diretamente para o valor informado
+			newQty = req.Quantity
+			if newQty < 0 {
+				tx.Rollback()
+				http.Error(w, "Stock quantity cannot be negative", http.StatusBadRequest)
+				return
+			}
+
+		default:
+			tx.Rollback()
+			http.Error(w, "Invalid movement_type. Must be: in, out or adjustment", http.StatusBadRequest)
+			return
 	}
 
 	material.StockQuantity = newQty
