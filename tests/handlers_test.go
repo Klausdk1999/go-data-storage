@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"data-storage/internal/auth"
@@ -243,5 +244,177 @@ func TestAdminCanAccessUsersEndpoint(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected status 200 for admin accessing users, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+// ── Time Entry helpers ────────────────────────────────────────────────────────
+
+func setupTimeEntryDeps(t *testing.T, testDB *gorm.DB) (user models.User, order models.ProductionOrder, svc models.Service) {
+	t.Helper()
+
+	user = createTestUser(t, testDB, "Worker", "worker@te.com", "pass", "worker")
+
+	product := models.Product{Name: "Prod", SKU: "SKU-1", IsActive: true}
+	testDB.Create(&product)
+
+	order = models.ProductionOrder{ProductID: product.ID, Quantity: 10, Status: "planned"}
+	testDB.Create(&order)
+
+	svc = models.Service{Code: "SVC-1", Name: "Montagem", IsActive: true}
+	testDB.Create(&svc)
+
+	return
+}
+
+func makeTimeEntryRequest(t *testing.T, body interface{}, userID uint, role string) *httptest.ResponseRecorder {
+	t.Helper()
+	jsonData, _ := json.Marshal(body)
+	req := httptest.NewRequest("POST", "/time-entries", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-User-Role", role)
+	req.Header.Set("X-User-ID", strconv.Itoa(int(userID)))
+	w := httptest.NewRecorder()
+	handlers.TimeEntriesHandler(w, req)
+	return w
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+func TestCreateTimeEntry_Single(t *testing.T) {
+	testDB := setupTestDB(t)
+	user, order, svc := setupTimeEntryDeps(t, testDB)
+
+	payload := map[string]interface{}{
+		"production_order_id": order.ID,
+		"service_id":          svc.ID,
+		"day":                 "2024-01-15",
+		"start_time":          "08:00",
+		"end_time":            "12:00",
+	}
+	w := makeTimeEntryRequest(t, payload, user.ID, "worker")
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Expected 201, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var entry models.TimeEntry
+	if err := json.Unmarshal(w.Body.Bytes(), &entry); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if entry.ID == 0 {
+		t.Error("Expected created entry to have an ID")
+	}
+	if entry.UserID != user.ID {
+		t.Errorf("Expected user_id %d, got %d", user.ID, entry.UserID)
+	}
+}
+
+func TestCreateTimeEntry_Batch(t *testing.T) {
+	testDB := setupTestDB(t)
+	user, order, svc := setupTimeEntryDeps(t, testDB)
+
+	payload := []map[string]interface{}{
+		{
+			"production_order_id": order.ID,
+			"service_id":          svc.ID,
+			"day":                 "2024-01-15",
+			"start_time":          "08:00",
+			"end_time":            "12:00",
+		},
+		{
+			"production_order_id": order.ID,
+			"service_id":          svc.ID,
+			"day":                 "2024-01-16",
+			"start_time":          "08:00",
+			"end_time":            "17:00",
+		},
+	}
+	w := makeTimeEntryRequest(t, payload, user.ID, "worker")
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Expected 201, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Created []models.TimeEntry `json:"created"`
+		Errors  []interface{}      `json:"errors"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if len(resp.Created) != 2 {
+		t.Errorf("Expected 2 created entries, got %d", len(resp.Created))
+	}
+	if len(resp.Errors) != 0 {
+		t.Errorf("Expected 0 errors, got %d", len(resp.Errors))
+	}
+}
+
+func TestCreateTimeEntry_BatchPartialError(t *testing.T) {
+	testDB := setupTestDB(t)
+	user, order, svc := setupTimeEntryDeps(t, testDB)
+
+	// Second entry is missing required "day" field.
+	payload := []map[string]interface{}{
+		{
+			"production_order_id": order.ID,
+			"service_id":          svc.ID,
+			"day":                 "2024-01-15",
+			"start_time":          "08:00",
+			"end_time":            "12:00",
+		},
+		{
+			"production_order_id": order.ID,
+			"service_id":          svc.ID,
+			// "day" intentionally omitted
+			"start_time": "13:00",
+			"end_time":   "17:00",
+		},
+	}
+	w := makeTimeEntryRequest(t, payload, user.ID, "worker")
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Expected 201 (partial success), got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Created []models.TimeEntry `json:"created"`
+		Errors  []interface{}      `json:"errors"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if len(resp.Created) != 1 {
+		t.Errorf("Expected 1 created entry, got %d", len(resp.Created))
+	}
+	if len(resp.Errors) != 1 {
+		t.Errorf("Expected 1 error, got %d", len(resp.Errors))
+	}
+}
+
+func TestCreateTimeEntry_EmptyBatch(t *testing.T) {
+	testDB := setupTestDB(t)
+	user, _, _ := setupTimeEntryDeps(t, testDB)
+
+	payload := []map[string]interface{}{}
+	w := makeTimeEntryRequest(t, payload, user.ID, "worker")
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400 for empty array, got %d", w.Code)
+	}
+}
+
+func TestCreateTimeEntry_MissingFields(t *testing.T) {
+	testDB := setupTestDB(t)
+	user, order, _ := setupTimeEntryDeps(t, testDB)
+
+	// Missing service_id, day, start_time, end_time.
+	payload := map[string]interface{}{
+		"production_order_id": order.ID,
+	}
+	w := makeTimeEntryRequest(t, payload, user.ID, "worker")
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400 for missing fields, got %d", w.Code)
 	}
 }
