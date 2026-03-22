@@ -85,6 +85,7 @@ func main() {
 
 	// MES: Customers (admin only)
 	r.HandleFunc("/customers", auth.RequireAdmin(handlers.CustomersHandler))
+	r.HandleFunc("/customers/{id}", auth.RequireAdmin(handlers.CustomerByIDHandler))
 
 	// MES: Production Orders
 	r.HandleFunc("/production-orders", auth.RequireUserAuth(handlers.ProductionOrdersHandler))

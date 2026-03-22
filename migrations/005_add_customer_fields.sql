@@ -1,0 +1,4 @@
+-- Add new fields to customers table
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS phone VARCHAR(50) NOT NULL DEFAULT '';
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS cnpj VARCHAR(20);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS address TEXT;
