@@ -268,7 +268,10 @@ func setupTimeEntryDeps(t *testing.T, testDB *gorm.DB) (user models.User, order 
 
 func makeTimeEntryRequest(t *testing.T, body interface{}, userID uint, role string) *httptest.ResponseRecorder {
 	t.Helper()
-	jsonData, _ := json.Marshal(body)
+	jsonData, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("failed to marshal request body: %v", err)
+	}
 	req := httptest.NewRequest("POST", "/time-entries", bytes.NewBuffer(jsonData))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-User-Role", role)
