@@ -2,7 +2,18 @@
 
 Como conectar um dispositivo IoT (ESP32, Arduino, Raspberry Pi, etc.) à API de armazenamento de dados.
 
-Existem duas opções: **REST (HTTP)** e **MQTT**. Ambas aceitam o mesmo formato de payload JSON.
+Existem duas opções: **REST (HTTP)** e **MQTT**. Ambas aceitam o mesmo formato de payload JSON e armazenam os dados da mesma forma no banco.
+
+---
+
+## Deploy e Limitações
+
+| Ambiente | REST | MQTT | Observação |
+|----------|------|------|------------|
+| **Render / Cloud (HTTPS)** | Sim | Não | Render expõe apenas portas HTTP/HTTPS. O broker MQTT (porta 1883 TCP) não é acessível externamente. Use REST. |
+| **Local / VPS / Docker** | Sim | Sim | Ambos funcionam. MQTT na porta 1883, REST na porta configurada. |
+
+**URL de produção (Render):** `https://go-pe.onrender.com`
 
 ---
 
@@ -14,15 +25,15 @@ Antes de conectar um dispositivo, você precisa de credenciais de autenticação
 
 A API Key é uma chave única compartilhada entre todos os dispositivos. Basta incluir no header `X-API-Key` das requisições REST.
 
-```
-API Key: klausf@bricio*030326
-```
+- A chave está definida na variável de ambiente `DEVICE_API_KEY` no servidor
+- No Render: acesse o painel > seu serviço > **Environment** > copie o valor de `DEVICE_API_KEY`
+- Localmente: definida no arquivo `.env`
 
 Com a API Key, dispositivos são criados automaticamente no primeiro envio (se `DEVICE_AUTO_CREATE=true`). Não precisa cadastrar o dispositivo antes.
 
 ### Opção B: Token Individual por Dispositivo (REST e MQTT)
 
-Cada dispositivo recebe um token único ao ser registrado. Necessário para MQTT e também funciona como alternativa à API Key no REST.
+Cada dispositivo recebe um token único ao ser registrado. Necessário para MQTT e também funciona como alternativa à API Key no REST. Mais seguro — se um dispositivo for comprometido, os outros não são afetados.
 
 **Pelo Dashboard (recomendado):**
 
@@ -36,8 +47,14 @@ Cada dispositivo recebe um token único ao ser registrado. Necessário para MQTT
 **Pela API:**
 
 ```bash
-curl -X POST https://seu-servidor.com/auth/register-device \
-  -H "Authorization: Bearer <token-usuario>" \
+# Primeiro, faça login para obter o JWT
+curl -X POST https://go-pe.onrender.com/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"seu-email@example.com","password":"sua-senha"}'
+
+# Use o JWT para registrar o dispositivo
+curl -X POST https://go-pe.onrender.com/auth/register-device \
+  -H "Authorization: Bearer <jwt-token>" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "esp32-sala",
@@ -47,119 +64,272 @@ curl -X POST https://seu-servidor.com/auth/register-device \
   }'
 ```
 
-A resposta inclui o `auth_token` do dispositivo.
+A resposta inclui o `auth_token` do dispositivo:
+
+```json
+{
+  "device": {
+    "id": 5,
+    "name": "esp32-sala",
+    "auth_token": "r9GahY_64Uy8rnW0DCN9OAo9-aAxhIsxhmP43QuPCpo=",
+    "is_active": true
+  },
+  "auth_token": "r9GahY_64Uy8rnW0DCN9OAo9-aAxhIsxhmP43QuPCpo="
+}
+```
 
 ---
 
 ## Formato do Payload
 
+Voce pode usar **nomes personalizados** para os campos (sinais):
+
+```json
+{
+  "device_id": "meu-sensor-01",
+  "temperatura": 23.5,
+  "umidade": 65,
+  "motor_ligado": true,
+  "status": "tudo-ok"
+}
+```
+
+O formato legado com `field_1` a `field_8` tambem continua funcionando:
+
 ```json
 {
   "device_id": "meu-sensor-01",
   "field_1": 23.5,
-  "field_2": 65,
-  "field_3": true,
-  "field_4": "status-ok"
+  "field_2": 65
 }
 ```
 
-- `device_id` (obrigatório): nome único do dispositivo
-- `field_1` a `field_8` (opcionais): envie apenas os campos que tiver
-  - **Número** → salvo como sinal analógico
-  - **Booleano** → salvo como sinal digital
-  - **String** → salvo nos metadados
-- Dispositivos e sinais são criados automaticamente no primeiro envio (se usando API Key com `DEVICE_AUTO_CREATE=true`)
+- `device_id` (obrigatorio): **nome** do dispositivo (nao o ID numerico do banco)
+- Qualquer outra chave no JSON e tratada como um sinal (ex: `"temperatura"`, `"abobora"`, `"nivel_rio"`)
+- **Correspondencia de nomes**: a comparacao e feita em minusculas e sem espacos, entao `"Temperatura"`, `"temperatura"` e `"Temperatura Sala"` vs `"temperaturasala"` correspondem ao mesmo sinal
+- Tipos de valores:
+  - **Numero** -> salvo como sinal analogico
+  - **Booleano** -> salvo como sinal digital
+  - **String** -> salvo nos metadados
+- Dispositivos e sinais sao criados automaticamente no primeiro envio (se usando API Key com `DEVICE_AUTO_CREATE=true`)
 
 ---
 
-## Opção 1: REST (HTTP POST)
+## Opcao 1: REST (HTTP POST)
 
-O endpoint é `POST /devices/data`.
+O endpoint e `POST /devices/data`. Funciona em qualquer ambiente (Render, local, VPS).
 
-### Autenticação
+### Autenticacao
 
-Escolha **uma** das opções:
+Escolha **uma** das opcoes:
 
-| Método | Header | Quando usar |
+| Metodo | Header | Quando usar |
 |--------|--------|-------------|
-| API Key | `X-API-Key: klausf@bricio*030326` | Mais simples, dispositivo criado automaticamente |
-| Token do dispositivo | `Authorization: Bearer <token>` | Dispositivo já registrado, mais seguro por dispositivo |
+| API Key | `X-API-Key: <sua-api-key>` | Mais simples, dispositivo criado automaticamente |
+| Token do dispositivo | `Authorization: Bearer <token>` | Dispositivo ja registrado, mais seguro por dispositivo |
 
 ### Exemplo com cURL
 
 ```bash
-# Com API Key (mais simples — dispositivo criado automaticamente)
-curl -X POST https://seu-servidor.com/devices/data \
+# Com API Key (mais simples - dispositivo criado automaticamente)
+curl -X POST https://go-pe.onrender.com/devices/data \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: klausf@bricio*030326" \
+  -H "X-API-Key: <sua-api-key>" \
   -d '{
     "device_id": "sensor-temperatura-01",
-    "field_1": 24.3,
-    "field_2": 61.5
+    "temperatura": 24.3,
+    "umidade": 61.5
   }'
 
 # Com token do dispositivo (registrado previamente)
-curl -X POST https://seu-servidor.com/devices/data \
+curl -X POST https://go-pe.onrender.com/devices/data \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer token-do-dispositivo" \
+  -H "Authorization: Bearer <token-do-dispositivo>" \
   -d '{
     "device_id": "sensor-temperatura-01",
-    "field_1": 24.3,
-    "field_2": 61.5
+    "temperatura": 24.3,
+    "umidade": 61.5,
+    "motor_ligado": true
   }'
 ```
 
 Resposta de sucesso: `201 Created` com `{"status": "ok"}`.
 
-### Exemplo com ESP32 (Arduino)
+### Exemplo com ESP32 (Arduino + ArduinoJson)
+
+Exemplo completo com reconexao WiFi, retry, e suporte a ambos os modos de autenticacao.
 
 ```cpp
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <ArduinoJson.h>
 
-const char* ssid = "SUA_REDE";
-const char* password = "SUA_SENHA";
-const char* serverUrl = "https://seu-servidor.com/devices/data";
-const char* apiKey = "klausf@bricio*030326";
+// ============================================================
+// CONFIGURACAO - Altere estes valores
+// ============================================================
+
+// WiFi
+const char* WIFI_SSID     = "SUA_REDE";
+const char* WIFI_PASSWORD  = "SUA_SENHA";
+
+// Backend
+const char* SERVER_URL = "https://go-pe.onrender.com/devices/data";
+
+// Autenticacao: escolha UMA opcao, comente a outra.
+// Opcao A: API Key global (dispositivo criado automaticamente)
+// const char* API_KEY    = "SUA_API_KEY";  // de Render > Environment > DEVICE_API_KEY
+// const char* AUTH_TOKEN = NULL;
+
+// Opcao B: Token individual do dispositivo (mais seguro)
+const char* API_KEY    = NULL;
+const char* AUTH_TOKEN = "TOKEN_DO_DISPOSITIVO";  // de POST /auth/register-device
+
+// Identidade do dispositivo
+const char* DEVICE_ID = "esp32-sala";
+
+// Tempo entre envios (ms)
+const unsigned long SEND_INTERVAL_MS = 60000;  // 60 segundos
+const int MAX_RETRIES = 3;
+
+// ============================================================
+// GLOBAIS
+// ============================================================
+unsigned long lastSendTime = 0;
+int failCount = 0;
 
 void setup() {
   Serial.begin(115200);
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("\nWiFi conectado!");
-}
+  delay(1000);
+  pinMode(2, OUTPUT);  // LED built-in
 
-void enviarDados(float temperatura, float umidade) {
-  if (WiFi.status() != WL_CONNECTED) return;
+  Serial.println("\n================================");
+  Serial.printf("Dispositivo: %s\n", DEVICE_ID);
+  Serial.printf("Servidor: %s\n", SERVER_URL);
+  Serial.println("================================\n");
 
-  HTTPClient http;
-  http.begin(serverUrl);
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("X-API-Key", apiKey);
-
-  String payload = "{\"device_id\":\"esp32-sala\","
-                   "\"field_1\":" + String(temperatura, 1) + ","
-                   "\"field_2\":" + String(umidade, 1) + "}";
-
-  int httpCode = http.POST(payload);
-  if (httpCode == 201) {
-    Serial.println("Dados enviados com sucesso!");
-  } else {
-    Serial.printf("Erro HTTP: %d\n", httpCode);
-  }
-  http.end();
+  connectWiFi();
+  sendSensorData();
+  lastSendTime = millis();
 }
 
 void loop() {
-  float temp = 23.5;  // substituir pela leitura real do sensor
-  float hum = 60.0;
-  enviarDados(temp, hum);
-  delay(60000); // envia a cada 60 segundos
+  if (WiFi.status() != WL_CONNECTED) {
+    connectWiFi();
+  }
+
+  if (millis() - lastSendTime >= SEND_INTERVAL_MS) {
+    sendSensorData();
+    lastSendTime = millis();
+  }
+
+  delay(100);
+}
+
+// ============================================================
+// Conexao WiFi
+// ============================================================
+void connectWiFi() {
+  Serial.printf("[WIFI] Conectando a %s", WIFI_SSID);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+  unsigned long start = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
+    Serial.print(".");
+    delay(500);
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.printf("\n[WIFI] Conectado! IP: %s\n", WiFi.localIP().toString().c_str());
+    digitalWrite(2, HIGH);
+  } else {
+    Serial.println("\n[WIFI] Falha na conexao.");
+    digitalWrite(2, LOW);
+  }
+}
+
+// ============================================================
+// Leitura dos sensores e envio
+// ============================================================
+void sendSensorData() {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  // Substitua pelas leituras reais dos seus sensores:
+  float temperatura = 23.5;
+  float umidade     = 60.0;
+  bool  movimento   = false;
+
+  // Monta o JSON — use nomes descritivos para os campos
+  JsonDocument doc;
+  doc["device_id"]    = DEVICE_ID;
+  doc["temperatura"]  = temperatura;
+  doc["umidade"]      = umidade;
+  doc["movimento"]    = movimento;
+  // doc["nivel_rio"] = outroValor;  // adicione mais campos conforme necessario
+
+  String payload;
+  serializeJson(doc, payload);
+  Serial.printf("[ENVIO] %s\n", payload.c_str());
+
+  // Envia com retry
+  bool success = false;
+  for (int attempt = 1; attempt <= MAX_RETRIES && !success; attempt++) {
+    if (attempt > 1) {
+      Serial.printf("[ENVIO] Tentativa %d/%d...\n", attempt, MAX_RETRIES);
+      delay(5000);
+    }
+    success = httpPost(payload);
+  }
+
+  if (success) {
+    failCount = 0;
+  } else {
+    failCount++;
+    if (failCount >= 5) {
+      Serial.println("[ENVIO] Muitas falhas, reconectando WiFi...");
+      WiFi.disconnect();
+      delay(1000);
+      connectWiFi();
+      failCount = 0;
+    }
+  }
+}
+
+// ============================================================
+// HTTP POST
+// ============================================================
+bool httpPost(const String& payload) {
+  HTTPClient http;
+  http.begin(SERVER_URL);
+  http.addHeader("Content-Type", "application/json");
+
+  // Autenticacao
+  if (API_KEY != NULL) {
+    http.addHeader("X-API-Key", API_KEY);
+  } else if (AUTH_TOKEN != NULL) {
+    http.addHeader("Authorization", String("Bearer ") + AUTH_TOKEN);
+  }
+
+  http.setTimeout(10000);
+  int httpCode = http.POST(payload);
+  String response = http.getString();
+  http.end();
+
+  if (httpCode == 201) {
+    Serial.printf("[HTTP] OK (201) - %s\n", response.c_str());
+    return true;
+  } else if (httpCode > 0) {
+    Serial.printf("[HTTP] Erro %d - %s\n", httpCode, response.c_str());
+    return false;
+  } else {
+    Serial.printf("[HTTP] Falha na conexao: %s\n", http.errorToString(httpCode).c_str());
+    return false;
+  }
 }
 ```
+
+**Bibliotecas necessarias no Arduino IDE:**
+- `ArduinoJson` (por Benoit Blanchon) - instale via Library Manager
 
 ### Exemplo com MicroPython (ESP32/ESP8266)
 
@@ -167,29 +337,51 @@ void loop() {
 import urequests
 import ujson
 import time
+import network
 
-SERVER_URL = "https://seu-servidor.com/devices/data"
-API_KEY = "klausf@bricio*030326"
+# Configuracao
+WIFI_SSID = "SUA_REDE"
+WIFI_PASS = "SUA_SENHA"
+SERVER_URL = "https://go-pe.onrender.com/devices/data"
+DEVICE_ID = "esp32-sala"
+
+# Autenticacao: escolha uma opcao
+API_KEY = "SUA_API_KEY"        # Opcao A: API Key global
+# AUTH_TOKEN = "TOKEN_DO_DEVICE"  # Opcao B: Token individual
+
+def connect_wifi():
+    wlan = network.WLAN(network.STA_IF)
+    wlan.active(True)
+    if not wlan.isconnected():
+        print("Conectando WiFi...")
+        wlan.connect(WIFI_SSID, WIFI_PASS)
+        while not wlan.isconnected():
+            time.sleep(0.5)
+    print("WiFi conectado:", wlan.ifconfig()[0])
 
 def enviar_dados(temperatura, umidade):
     payload = ujson.dumps({
-        "device_id": "esp32-sala",
-        "field_1": temperatura,
-        "field_2": umidade
+        "device_id": DEVICE_ID,
+        "temperatura": temperatura,
+        "umidade": umidade
     })
 
-    headers = {
-        "Content-Type": "application/json",
-        "X-API-Key": API_KEY
-    }
+    headers = {"Content-Type": "application/json"}
+
+    # Escolha o header de autenticacao
+    if "API_KEY" in dir():
+        headers["X-API-Key"] = API_KEY
+    else:
+        headers["Authorization"] = "Bearer " + AUTH_TOKEN
 
     try:
         response = urequests.post(SERVER_URL, data=payload, headers=headers)
-        print("Status:", response.status_code)
+        print("Status:", response.status_code, response.text)
         response.close()
     except Exception as e:
         print("Erro:", e)
 
+connect_wifi()
 while True:
     temp = 23.5  # substituir pela leitura real
     hum = 60.0
@@ -197,13 +389,50 @@ while True:
     time.sleep(60)
 ```
 
+### Exemplo com Python (Raspberry Pi / PC)
+
+```python
+import requests
+import json
+import time
+
+SERVER_URL = "https://go-pe.onrender.com/devices/data"
+DEVICE_ID = "raspberry-pi-01"
+
+# Autenticacao: escolha uma opcao
+API_KEY = "SUA_API_KEY"
+# AUTH_TOKEN = "TOKEN_DO_DEVICE"
+
+def enviar_dados(temperatura, umidade):
+    payload = {
+        "device_id": DEVICE_ID,
+        "temperatura": temperatura,
+        "umidade": umidade
+    }
+
+    headers = {"Content-Type": "application/json"}
+    if API_KEY:
+        headers["X-API-Key"] = API_KEY
+    else:
+        headers["Authorization"] = f"Bearer {AUTH_TOKEN}"
+
+    response = requests.post(SERVER_URL, json=payload, headers=headers)
+    print(f"Status: {response.status_code} - {response.text}")
+
+while True:
+    enviar_dados(23.5, 60.0)  # substituir por leituras reais
+    time.sleep(60)
+```
+
 ---
 
-## Opção 2: MQTT
+## Opcao 2: MQTT
 
-O servidor possui um broker MQTT embutido. O dispositivo conecta via MQTT e publica mensagens no tópico `devices/{nome-do-dispositivo}/data`.
+O servidor possui um broker MQTT embutido (mochi-mqtt). O dispositivo conecta via MQTT e publica mensagens no topico `devices/{nome-do-dispositivo}/data`.
 
-### Pré-requisitos
+> **Importante:** MQTT so funciona em deploys locais ou VPS onde a porta TCP 1883 esta acessivel. No Render e plataformas similares (que so expoem HTTP/HTTPS), use REST.
+
+### Pre-requisitos
 
 O broker precisa estar habilitado no servidor:
 
@@ -212,16 +441,16 @@ MQTT_BROKER_ENABLED=true
 MQTT_BROKER_PORT=1883
 ```
 
-### Autenticação MQTT
+### Autenticacao MQTT
 
 - **Username**: nome do dispositivo (mesmo valor de `name` no banco)
 - **Password**: `auth_token` do dispositivo
 
-O dispositivo precisa estar cadastrado previamente. Registre pelo **dashboard** (aba Dispositivos → Adicionar Dispositivo) ou pela API conforme descrito na seção [Obtendo Credenciais](#obtendo-credenciais).
+O dispositivo precisa estar cadastrado previamente. Nao ha auto-criacao via MQTT. Registre pelo **dashboard** (aba Dispositivos -> Adicionar Dispositivo) ou pela API conforme descrito na secao [Obtendo Credenciais](#obtendo-credenciais).
 
-### Tópico
+### Topico
 
-O dispositivo só pode publicar no seu próprio tópico:
+O dispositivo so pode publicar no seu proprio topico:
 
 ```
 devices/{nome-do-dispositivo}/data
@@ -238,10 +467,10 @@ Exemplo: dispositivo `esp32-sala` publica em `devices/esp32-sala/data`.
 const char* ssid = "SUA_REDE";
 const char* wifiPassword = "SUA_SENHA";
 
-const char* mqttServer = "seu-servidor.com";
+const char* mqttServer = "SEU_SERVIDOR";  // IP ou hostname (ex: 192.168.1.100)
 const int mqttPort = 1883;
 const char* deviceName = "esp32-sala";      // username MQTT
-const char* authToken = "token-do-device";  // password MQTT (obtido ao registrar)
+const char* authToken = "TOKEN_DO_DEVICE";  // password MQTT (obtido ao registrar)
 
 WiFiClient espClient;
 PubSubClient mqtt(espClient);
@@ -277,8 +506,8 @@ void enviarDados(float temperatura, float umidade) {
 
   String topic = "devices/" + String(deviceName) + "/data";
   String payload = "{\"device_id\":\"" + String(deviceName) + "\","
-                   "\"field_1\":" + String(temperatura, 1) + ","
-                   "\"field_2\":" + String(umidade, 1) + "}";
+                   "\"temperatura\":" + String(temperatura, 1) + ","
+                   "\"umidade\":" + String(umidade, 1) + "}";
 
   if (mqtt.publish(topic.c_str(), payload.c_str())) {
     Serial.println("Dados publicados via MQTT!");
@@ -302,10 +531,10 @@ import paho.mqtt.client as mqtt
 import json
 import time
 
-BROKER = "seu-servidor.com"
+BROKER = "SEU_SERVIDOR"  # IP ou hostname
 PORT = 1883
 DEVICE_NAME = "sensor-python-01"
-AUTH_TOKEN = "token-do-device"  # obtido ao registrar no dashboard
+AUTH_TOKEN = "TOKEN_DO_DEVICE"  # obtido ao registrar no dashboard
 
 client = mqtt.Client(client_id=DEVICE_NAME)
 client.username_pw_set(DEVICE_NAME, AUTH_TOKEN)
@@ -317,8 +546,8 @@ topic = f"devices/{DEVICE_NAME}/data"
 while True:
     payload = json.dumps({
         "device_id": DEVICE_NAME,
-        "field_1": 24.3,
-        "field_2": 61.5
+        "temperatura": 24.3,
+        "umidade": 61.5
     })
 
     client.publish(topic, payload)
@@ -326,49 +555,64 @@ while True:
     time.sleep(60)
 ```
 
+### Testando MQTT com mosquitto (CLI)
+
+Se tiver o mosquitto-clients instalado, pode testar rapidamente:
+
+```bash
+mosquitto_pub -h localhost -p 1883 \
+  -u "esp32-sala" -P "TOKEN_DO_DEVICE" \
+  -t "devices/esp32-sala/data" \
+  -m '{"device_id":"esp32-sala","temperatura":25.0,"umidade":60.0}'
+```
+
 ---
 
 ## REST vs MQTT: Quando usar cada um?
 
-| Critério | REST (HTTP) | MQTT |
+| Criterio | REST (HTTP) | MQTT |
 |----------|-------------|------|
-| Simplicidade | Mais simples, basta fazer um POST | Precisa manter conexão ativa |
-| Consumo de energia | Maior (abre conexão a cada envio) | Menor (conexão persistente) |
-| Latência | Maior | Menor |
+| Simplicidade | Mais simples, basta fazer um POST | Precisa manter conexao ativa |
+| Cloud (Render) | Funciona | Nao funciona (porta TCP bloqueada) |
+| Consumo de energia | Maior (abre conexao a cada envio) | Menor (conexao persistente) |
+| Latencia | Maior | Menor |
 | Firewall | Porta 443 (HTTPS), quase sempre aberta | Porta 1883, pode ser bloqueada |
-| Ideal para | Envios esporádicos, protótipos rápidos | Envios frequentes, muitos dispositivos |
-| Auth com API Key | Sim (sem cadastro prévio) | Não disponível |
-| Auth com Token | Sim | Sim (obrigatório) |
-| Auto-criação | Sim (com API Key + `DEVICE_AUTO_CREATE=true`) | Não, dispositivo deve ser registrado antes |
+| Ideal para | Deploy na nuvem, envios esporadicos, prototipos | Rede local, envios frequentes, muitos dispositivos |
+| Auth com API Key | Sim (sem cadastro previo) | Nao disponivel |
+| Auth com Token | Sim | Sim (obrigatorio) |
+| Auto-criacao | Sim (com API Key + `DEVICE_AUTO_CREATE=true`) | Nao, dispositivo deve ser registrado antes |
 
 ---
 
 ## Verificando os Dados
 
-Após enviar dados, você pode verificá-los:
+Apos enviar dados, voce pode verifica-los:
 
-1. **Dashboard**: acesse o frontend e vá na aba "Signal Values"
+1. **Dashboard**: acesse o frontend e va na aba "Signal Values"
 2. **API**: consulte os valores via REST:
 
 ```bash
 # Listar dispositivos
-curl -H "Authorization: Bearer <token>" https://seu-servidor.com/devices
+curl -H "Authorization: Bearer <jwt-token>" https://go-pe.onrender.com/devices
 
 # Listar sinais de um dispositivo
-curl -H "Authorization: Bearer <token>" https://seu-servidor.com/devices/1/signals
+curl -H "Authorization: Bearer <jwt-token>" https://go-pe.onrender.com/devices/1/signals
 
 # Listar valores de um sinal
-curl -H "Authorization: Bearer <token>" https://seu-servidor.com/signals/1/values
+curl -H "Authorization: Bearer <jwt-token>" https://go-pe.onrender.com/signals/1/values
 ```
 
 ---
 
-## Solução de Problemas
+## Solucao de Problemas
 
-| Problema | Causa provável | Solução |
+| Problema | Causa provavel | Solucao |
 |----------|---------------|---------|
 | `401 Unauthorized` (REST) | API key ou token incorreto | Verifique `X-API-Key` ou `Authorization` header |
-| `400 Bad Request` | JSON inválido ou `device_id` ausente | Verifique o formato do payload |
-| MQTT não conecta | Credenciais erradas ou broker desabilitado | Verifique `MQTT_BROKER_ENABLED=true` e as credenciais |
-| MQTT publica mas dados não aparecem | Tópico incorreto | Use `devices/{nome}/data` exatamente |
-| Dispositivo não encontrado (MQTT) | Dispositivo não registrado | Registre o dispositivo via dashboard ou API antes de conectar |
+| `400 Bad Request` | JSON invalido ou `device_id` ausente | Verifique o formato do payload |
+| `Authorization header required` | Nenhum header de autenticacao enviado | Adicione `X-API-Key` ou `Authorization: Bearer` |
+| MQTT nao conecta | Credenciais erradas ou broker desabilitado | Verifique `MQTT_BROKER_ENABLED=true` e as credenciais |
+| MQTT nao conecta (Render) | Render nao expoe porta 1883 | Use REST no Render. MQTT so funciona local/VPS |
+| MQTT publica mas dados nao aparecem | Topico incorreto | Use `devices/{nome}/data` exatamente |
+| Dispositivo nao encontrado (MQTT) | Dispositivo nao registrado | Registre o dispositivo via dashboard ou API antes de conectar |
+| Render demora para responder | Free tier entra em sleep | Primeira requisicao pode levar ~30s. E normal. |

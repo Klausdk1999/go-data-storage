@@ -50,6 +50,9 @@ func main() {
 	// Public endpoints
 	r.HandleFunc("/auth/login", handlers.LoginHandler).Methods("POST")
 
+	// Generic device data endpoint (API key or device token auth) — must be before /devices/{id}
+	r.HandleFunc("/devices/data", handlers.GenericDataHandler).Methods("POST")
+
 	// Admin-only endpoints
 	r.HandleFunc("/auth/register-device", auth.RequireAdmin(handlers.RegisterDeviceHandler)).Methods("POST")
 	r.HandleFunc("/users", auth.RequireAdmin(handlers.UsersHandler))
@@ -111,8 +114,6 @@ func main() {
 	r.HandleFunc("/readings/{user_id}", handlers.UserReadingsHandler)
 	r.HandleFunc("/users/rfid/{rfid}", handlers.GetUserByRFIDHandler)
 
-	// Generic device data endpoint (API key or device token auth)
-	r.HandleFunc("/devices/data", handlers.GenericDataHandler).Methods("POST")
 
 	c := cors.New(cors.Options{
 		AllowedOrigins: []string{"*"},

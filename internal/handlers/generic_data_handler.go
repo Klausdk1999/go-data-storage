@@ -17,6 +17,8 @@ import (
 )
 
 // GenericDeviceDataRaw uses interface{} for flexible field parsing from any microcontroller.
+// Supports both legacy fixed fields (field_1..field_8) and custom named fields.
+// Custom fields are any extra JSON keys beyond "device_id" and "field_N".
 type GenericDeviceDataRaw struct {
 	DeviceID string      `json:"device_id"`
 	Field1   interface{} `json:"field_1"`
@@ -27,6 +29,13 @@ type GenericDeviceDataRaw struct {
 	Field6   interface{} `json:"field_6"`
 	Field7   interface{} `json:"field_7"`
 	Field8   interface{} `json:"field_8"`
+	// Extra holds any additional custom-named fields from the JSON payload.
+	Extra map[string]interface{} `json:"-"`
+}
+
+// normalizeSignalName lowercases and removes all whitespace for matching.
+func normalizeSignalName(name string) string {
+	return strings.Join(strings.Fields(strings.ToLower(name)), "")
 }
 
 // GenericDataHandler handles POST /devices/data.
@@ -69,10 +78,28 @@ func GenericDataHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// --- Parse body ---
-	var data GenericDeviceDataRaw
-	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+	var rawJSON map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&rawJSON); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
+	}
+
+	// Re-marshal and decode into the struct for fixed fields
+	rawBytes, _ := json.Marshal(rawJSON)
+	var data GenericDeviceDataRaw
+	json.Unmarshal(rawBytes, &data)
+
+	// Collect extra fields (anything not device_id or field_N)
+	knownKeys := map[string]bool{
+		"device_id": true,
+		"field_1": true, "field_2": true, "field_3": true, "field_4": true,
+		"field_5": true, "field_6": true, "field_7": true, "field_8": true,
+	}
+	data.Extra = make(map[string]interface{})
+	for k, v := range rawJSON {
+		if !knownKeys[k] {
+			data.Extra[k] = v
+		}
 	}
 
 	if data.DeviceID == "" {
@@ -134,7 +161,7 @@ func ProcessGenericDeviceData(data GenericDeviceDataRaw, deviceToken string) err
 		return fmt.Errorf("device token mismatch for device %q", data.DeviceID)
 	}
 
-	// Process each non-nil field
+	// Build combined fields map: legacy field_N + custom named fields
 	fields := map[string]interface{}{
 		"field_1": data.Field1,
 		"field_2": data.Field2,
@@ -144,6 +171,9 @@ func ProcessGenericDeviceData(data GenericDeviceDataRaw, deviceToken string) err
 		"field_6": data.Field6,
 		"field_7": data.Field7,
 		"field_8": data.Field8,
+	}
+	for k, v := range data.Extra {
+		fields[k] = v
 	}
 
 	now := time.Now()
@@ -190,19 +220,32 @@ func ProcessGenericDeviceData(data GenericDeviceDataRaw, deviceToken string) err
 }
 
 // ensureGenericSignal finds or creates a signal for the given device and field name.
+// Matching is done by normalizing names (lowercase, no whitespace) so that
+// "Temperatura Sala", "temperatura_sala", and "temperaturasala" all match the same signal.
 func ensureGenericSignal(database *gorm.DB, deviceID uint, fieldName string, value interface{}) (*models.Signal, error) {
+	// First try exact match
 	var signal models.Signal
 	result := database.Where("device_id = ? AND name = ?", deviceID, fieldName).First(&signal)
-
 	if result.Error == nil {
 		return &signal, nil
 	}
-
 	if result.Error != gorm.ErrRecordNotFound {
 		return nil, result.Error
 	}
 
-	// Determine signal type from value type
+	// Try normalized match against all signals for this device
+	normalized := normalizeSignalName(fieldName)
+	var signals []models.Signal
+	if err := database.Where("device_id = ?", deviceID).Find(&signals).Error; err != nil {
+		return nil, err
+	}
+	for _, s := range signals {
+		if normalizeSignalName(s.Name) == normalized {
+			return &s, nil
+		}
+	}
+
+	// No match found — create new signal
 	signalType := "analogic"
 	if _, ok := value.(bool); ok {
 		signalType = "digital"

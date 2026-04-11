@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"data-storage/internal/auth"
@@ -243,5 +244,271 @@ func TestAdminCanAccessUsersEndpoint(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected status 200 for admin accessing users, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+// --- Generic Device Data Handler Tests ---
+
+func createTestDevice(t *testing.T, testDB *gorm.DB, name, token string) models.Device {
+	t.Helper()
+	device := models.Device{
+		Name:      name,
+		AuthToken: token,
+		IsActive:  true,
+	}
+	testDB.Create(&device)
+	return device
+}
+
+func postDeviceData(t *testing.T, payload map[string]interface{}, authHeader string) *httptest.ResponseRecorder {
+	t.Helper()
+	jsonData, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/devices/data", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	if authHeader != "" {
+		req.Header.Set("Authorization", authHeader)
+	}
+	w := httptest.NewRecorder()
+	handlers.GenericDataHandler(w, req)
+	return w
+}
+
+func getSignalsForDevice(t *testing.T, testDB *gorm.DB, deviceID uint) []models.Signal {
+	t.Helper()
+	var signals []models.Signal
+	testDB.Where("device_id = ?", deviceID).Find(&signals)
+	return signals
+}
+
+func TestGenericDataHandler_CustomFieldNames(t *testing.T) {
+	testDB := setupTestDB(t)
+	device := createTestDevice(t, testDB, "esp32-test", "test-token-123")
+	os.Setenv("DEVICE_AUTO_CREATE", "true")
+
+	w := postDeviceData(t, map[string]interface{}{
+		"device_id":    "esp32-test",
+		"temperatura":  23.5,
+		"umidade":      61.0,
+		"motor_ligado": true,
+	}, "Bearer test-token-123")
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Expected 201, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	signals := getSignalsForDevice(t, testDB, device.ID)
+	if len(signals) != 3 {
+		t.Fatalf("Expected 3 signals, got %d", len(signals))
+	}
+
+	names := map[string]string{}
+	for _, s := range signals {
+		names[s.Name] = s.SignalType
+	}
+
+	if names["temperatura"] != "analogic" {
+		t.Errorf("Expected 'temperatura' as analogic signal, got %q", names["temperatura"])
+	}
+	if names["umidade"] != "analogic" {
+		t.Errorf("Expected 'umidade' as analogic signal, got %q", names["umidade"])
+	}
+	if names["motor_ligado"] != "digital" {
+		t.Errorf("Expected 'motor_ligado' as digital signal, got %q", names["motor_ligado"])
+	}
+}
+
+func TestGenericDataHandler_LegacyFieldNames(t *testing.T) {
+	testDB := setupTestDB(t)
+	device := createTestDevice(t, testDB, "esp32-legacy", "legacy-token")
+
+	w := postDeviceData(t, map[string]interface{}{
+		"device_id": "esp32-legacy",
+		"field_1":   10.0,
+		"field_2":   20.0,
+	}, "Bearer legacy-token")
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Expected 201, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	signals := getSignalsForDevice(t, testDB, device.ID)
+	if len(signals) != 2 {
+		t.Fatalf("Expected 2 signals, got %d", len(signals))
+	}
+
+	names := map[string]bool{}
+	for _, s := range signals {
+		names[s.Name] = true
+	}
+	if !names["field_1"] || !names["field_2"] {
+		t.Errorf("Expected field_1 and field_2 signals, got %v", names)
+	}
+}
+
+func TestGenericDataHandler_MixedCustomAndLegacy(t *testing.T) {
+	testDB := setupTestDB(t)
+	device := createTestDevice(t, testDB, "esp32-mixed", "mixed-token")
+
+	w := postDeviceData(t, map[string]interface{}{
+		"device_id":   "esp32-mixed",
+		"field_1":     10.0,
+		"temperatura": 25.0,
+	}, "Bearer mixed-token")
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Expected 201, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	signals := getSignalsForDevice(t, testDB, device.ID)
+	if len(signals) != 2 {
+		t.Fatalf("Expected 2 signals, got %d", len(signals))
+	}
+
+	names := map[string]bool{}
+	for _, s := range signals {
+		names[s.Name] = true
+	}
+	if !names["field_1"] || !names["temperatura"] {
+		t.Errorf("Expected field_1 and temperatura, got %v", names)
+	}
+}
+
+func TestGenericDataHandler_NormalizedMatching(t *testing.T) {
+	testDB := setupTestDB(t)
+	device := createTestDevice(t, testDB, "esp32-norm", "norm-token")
+
+	// First POST creates signal with lowercase name
+	w := postDeviceData(t, map[string]interface{}{
+		"device_id":   "esp32-norm",
+		"temperatura": 20.0,
+	}, "Bearer norm-token")
+	if w.Code != http.StatusCreated {
+		t.Fatalf("First POST: expected 201, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	signalsBefore := getSignalsForDevice(t, testDB, device.ID)
+	if len(signalsBefore) != 1 {
+		t.Fatalf("Expected 1 signal after first POST, got %d", len(signalsBefore))
+	}
+
+	// Second POST with different casing — should match existing signal, not create new
+	w = postDeviceData(t, map[string]interface{}{
+		"device_id":   "esp32-norm",
+		"Temperatura": 25.0,
+	}, "Bearer norm-token")
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Second POST: expected 201, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	signalsAfter := getSignalsForDevice(t, testDB, device.ID)
+	if len(signalsAfter) != 1 {
+		t.Errorf("Expected 1 signal after normalized match, got %d (duplicate created)", len(signalsAfter))
+	}
+
+	// Verify two values stored for the same signal
+	var count int64
+	testDB.Model(&models.SignalValue{}).Where("signal_id = ?", signalsBefore[0].ID).Count(&count)
+	if count != 2 {
+		t.Errorf("Expected 2 values for signal, got %d", count)
+	}
+}
+
+func TestGenericDataHandler_NormalizedMatchingWithSpaces(t *testing.T) {
+	testDB := setupTestDB(t)
+	device := createTestDevice(t, testDB, "esp32-spaces", "spaces-token")
+
+	// Create signal with spaces in name
+	testDB.Create(&models.Signal{
+		DeviceID:   device.ID,
+		Name:       "Nivel Rio",
+		SignalType: "analogic",
+		Direction:  "input",
+		IsActive:   true,
+	})
+
+	// POST with no spaces — should match "Nivel Rio" via normalization
+	w := postDeviceData(t, map[string]interface{}{
+		"device_id": "esp32-spaces",
+		"nivelrio":  3.5,
+	}, "Bearer spaces-token")
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Expected 201, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	signals := getSignalsForDevice(t, testDB, device.ID)
+	if len(signals) != 1 {
+		t.Errorf("Expected 1 signal (matched via normalization), got %d", len(signals))
+	}
+}
+
+func TestGenericDataHandler_Unauthorized(t *testing.T) {
+	setupTestDB(t)
+
+	w := postDeviceData(t, map[string]interface{}{
+		"device_id":   "esp32-test",
+		"temperatura": 20.0,
+	}, "Bearer invalid-token")
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected 401, got %d", w.Code)
+	}
+}
+
+func TestGenericDataHandler_NoAuth(t *testing.T) {
+	setupTestDB(t)
+
+	w := postDeviceData(t, map[string]interface{}{
+		"device_id":   "esp32-test",
+		"temperatura": 20.0,
+	}, "")
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected 401, got %d", w.Code)
+	}
+}
+
+func TestGenericDataHandler_MissingDeviceID(t *testing.T) {
+	testDB := setupTestDB(t)
+	createTestDevice(t, testDB, "esp32-test", "token-123")
+
+	w := postDeviceData(t, map[string]interface{}{
+		"temperatura": 20.0,
+	}, "Bearer token-123")
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400, got %d", w.Code)
+	}
+}
+
+func TestGenericDataHandler_ApiKeyAuth(t *testing.T) {
+	testDB := setupTestDB(t)
+	os.Setenv("DEVICE_API_KEY", "test-api-key-123")
+	os.Setenv("DEVICE_AUTO_CREATE", "true")
+	defer os.Unsetenv("DEVICE_API_KEY")
+
+	payload, _ := json.Marshal(map[string]interface{}{
+		"device_id":   "esp32-apikey",
+		"temperatura": 22.0,
+	})
+	req := httptest.NewRequest("POST", "/devices/data", bytes.NewBuffer(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", "test-api-key-123")
+	w := httptest.NewRecorder()
+	handlers.GenericDataHandler(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Expected 201, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	// Verify device was auto-created
+	var device models.Device
+	testDB.Where("name = ?", "esp32-apikey").First(&device)
+	if device.ID == 0 {
+		t.Error("Device should have been auto-created")
+	}
+
+	signals := getSignalsForDevice(t, testDB, device.ID)
+	if len(signals) != 1 || signals[0].Name != "temperatura" {
+		t.Errorf("Expected 1 signal named 'temperatura', got %v", signals)
 	}
 }
