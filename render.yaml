@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: go-data-storage
+    runtime: docker
+    plan: free
+    healthCheckPath: /auth/login
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PORT
+        value: 8080
+      - key: DEVICE_API_KEY
+        generateValue: true
+      - key: DEVICE_AUTO_CREATE
+        value: true
+      - key: MQTT_BROKER_ENABLED
+        value: false
+      - key: TTN_ENABLED
+        value: false

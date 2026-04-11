@@ -607,13 +607,16 @@ docker run -p 8080:8080 \
 ```json
 {
   "device_id": "my-sensor-01",
-  "field_1": 23.5,
-  "field_2": true,
-  "field_3": "status-ok"
+  "temperatura": 23.5,
+  "umidade": 65.0,
+  "motor_ligado": true,
+  "status": "ok"
 }
 ```
 
-- Up to 8 fields (`field_1` through `field_8`), any can be omitted
+- Use any field name as a signal name (e.g., `"temperatura"`, `"abobora"`, `"nivel_rio"`)
+- Legacy `field_1` through `field_8` keys are still supported for backward compatibility
+- Signal matching is case-insensitive and ignores whitespace (e.g., `"Temperatura"` matches existing `"temperatura"`)
 - Numeric values stored as analogic signals, booleans as digital signals, strings in metadata
 - If the device doesn't exist and `DEVICE_AUTO_CREATE=true`, it's created automatically
 - Signals are auto-created per field name on first use

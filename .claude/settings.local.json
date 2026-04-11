@@ -5,7 +5,9 @@
       "Bash(tree:*)",
       "WebSearch",
       "Bash(claude mcp:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(go build:*)",
+      "Bash(DATABASE_URL=\"postgresql://neondb_owner:npg_CJcjiIyS5d8X@ep-aged-cherry-ac5nt56b-pooler.sa-east-1.aws.neon.tech/neondb?channel_binding=require&sslmode=require\" go run:*)"
     ]
   }
 }

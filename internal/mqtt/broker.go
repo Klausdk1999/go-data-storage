@@ -138,10 +138,27 @@ func (h *MessageProcessingHook) OnPublished(cl *mochi.Client, pk packets.Packet)
 
 	deviceName := parts[1]
 
-	var data handlers.GenericDeviceDataRaw
-	if err := json.Unmarshal(pk.Payload, &data); err != nil {
+	// Parse into raw map first to capture custom fields
+	var rawJSON map[string]interface{}
+	if err := json.Unmarshal(pk.Payload, &rawJSON); err != nil {
 		log.Printf("[MQTT Broker] Error parsing payload from device %q: %v", deviceName, err)
 		return
+	}
+
+	var data handlers.GenericDeviceDataRaw
+	json.Unmarshal(pk.Payload, &data)
+
+	// Collect extra fields (anything not device_id or field_N)
+	knownKeys := map[string]bool{
+		"device_id": true,
+		"field_1": true, "field_2": true, "field_3": true, "field_4": true,
+		"field_5": true, "field_6": true, "field_7": true, "field_8": true,
+	}
+	data.Extra = make(map[string]interface{})
+	for k, v := range rawJSON {
+		if !knownKeys[k] {
+			data.Extra[k] = v
+		}
 	}
 
 	// Ensure device_id is set from the topic if not present in payload
