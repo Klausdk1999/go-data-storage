@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
 
 	"data-storage/internal/db"
 	"data-storage/internal/models"
 
 	"github.com/gorilla/mux"
+	"gorm.io/gorm"
 )
 
 // CustomersHandler handles customer list and creation
@@ -57,11 +59,21 @@ func getAllCustomers(w http.ResponseWriter, r *http.Request) {
 
 func getCustomerByID(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id := vars["id"]
+	idStr := vars["id"]
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		http.Error(w, "Invalid customer ID", http.StatusBadRequest)
+		return
+	}
 
 	var customer models.Customer
 	if err := db.GetDB().First(&customer, id).Error; err != nil {
-		http.Error(w, "Customer not found", http.StatusNotFound)
+		if err == gorm.ErrRecordNotFound {
+			http.Error(w, "Customer not found", http.StatusNotFound)
+		} else {
+			log.Printf("Error fetching customer: %v", err)
+			http.Error(w, "Error fetching customer", http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -100,11 +112,21 @@ func createCustomer(w http.ResponseWriter, r *http.Request) {
 
 func updateCustomer(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id := vars["id"]
+	idStr := vars["id"]
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		http.Error(w, "Invalid customer ID", http.StatusBadRequest)
+		return
+	}
 
 	var customer models.Customer
 	if err := db.GetDB().First(&customer, id).Error; err != nil {
-		http.Error(w, "Customer not found", http.StatusNotFound)
+		if err == gorm.ErrRecordNotFound {
+			http.Error(w, "Customer not found", http.StatusNotFound)
+		} else {
+			log.Printf("Error fetching customer: %v", err)
+			http.Error(w, "Error fetching customer", http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -136,11 +158,21 @@ func updateCustomer(w http.ResponseWriter, r *http.Request) {
 
 func deleteCustomer(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id := vars["id"]
+	idStr := vars["id"]
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		http.Error(w, "Invalid customer ID", http.StatusBadRequest)
+		return
+	}
 
 	var customer models.Customer
 	if err := db.GetDB().First(&customer, id).Error; err != nil {
-		http.Error(w, "Customer not found", http.StatusNotFound)
+		if err == gorm.ErrRecordNotFound {
+			http.Error(w, "Customer not found", http.StatusNotFound)
+		} else {
+			log.Printf("Error fetching customer: %v", err)
+			http.Error(w, "Error fetching customer", http.StatusInternalServerError)
+		}
 		return
 	}
 
