@@ -159,6 +159,9 @@ type BillOfMaterials struct {
 type Customer struct {
 	ID        uint      `gorm:"primaryKey" json:"id,omitempty"`
 	Name      string    `gorm:"not null;uniqueIndex" json:"name"`
+	Phone     string    `gorm:"not null;default:''" json:"phone"`
+	CNPJ      *string   `json:"cnpj,omitempty"`
+	Address   *string   `json:"address,omitempty"`
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
 }

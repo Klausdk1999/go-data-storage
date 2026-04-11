@@ -75,43 +75,137 @@ func getAllTimeEntries(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(entries)
 }
 
+// batchCreateResponse is returned when creating multiple entries at once.
+type batchCreateResponse struct {
+	Created []models.TimeEntry `json:"created"`
+	Errors  []batchEntryError  `json:"errors,omitempty"`
+}
+
+type batchEntryError struct {
+	Index      int    `json:"index"`
+	Message    string `json:"message"`
+	StatusCode int    `json:"status_code"`
+}
+
+// entryProcessError carries an HTTP status code alongside an error message
+// so callers can distinguish client errors (4xx) from server errors (5xx).
+type entryProcessError struct {
+	StatusCode int
+	Message    string
+}
+
 func createTimeEntry(w http.ResponseWriter, r *http.Request) {
-	var entry models.TimeEntry
-	if err := json.NewDecoder(r.Body).Decode(&entry); err != nil {
+	role := r.Header.Get("X-User-Role")
+	userIDStr := r.Header.Get("X-User-ID")
+
+	// Read raw body to detect whether it is an object or an array.
+	var raw json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	// Workers can only create entries for themselves
-	role := r.Header.Get("X-User-Role")
+	// Determine payload shape by inspecting the first non-whitespace byte.
+	isArray := false
+	for _, b := range raw {
+		if b == ' ' || b == '\t' || b == '\n' || b == '\r' {
+			continue
+		}
+		isArray = b == '['
+		break
+	}
+
+	if isArray {
+		// ── Batch mode ────────────────────────────────────────────────────
+		var inputs []models.TimeEntry
+		if err := json.Unmarshal(raw, &inputs); err != nil {
+			http.Error(w, "Invalid request body: expected array of time entries", http.StatusBadRequest)
+			return
+		}
+
+		if len(inputs) == 0 {
+			http.Error(w, "At least one time entry is required", http.StatusBadRequest)
+			return
+		}
+
+		resp := batchCreateResponse{
+			Created: make([]models.TimeEntry, 0, len(inputs)),
+			Errors:  []batchEntryError{},
+		}
+
+		for i, input := range inputs {
+			created, entryErr := processSingleEntry(input, role, userIDStr)
+			if entryErr != nil {
+				resp.Errors = append(resp.Errors, batchEntryError{Index: i, Message: entryErr.Message, StatusCode: entryErr.StatusCode})
+				continue
+			}
+			resp.Created = append(resp.Created, *created)
+		}
+
+		if len(resp.Created) == 0 {
+			overallStatus := http.StatusBadRequest
+			for _, e := range resp.Errors {
+				if e.StatusCode >= 500 {
+					overallStatus = http.StatusInternalServerError
+					break
+				}
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(overallStatus)
+			json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	// ── Single entry mode (retrocompatível) ───────────────────────────────
+	var input models.TimeEntry
+	if err := json.Unmarshal(raw, &input); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	created, entryErr := processSingleEntry(input, role, userIDStr)
+	if entryErr != nil {
+		http.Error(w, entryErr.Message, entryErr.StatusCode)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(created)
+}
+
+// processSingleEntry validates and persists a single TimeEntry.
+// Returns the created entry (with associations preloaded) or a typed error
+// carrying the appropriate HTTP status code.
+func processSingleEntry(entry models.TimeEntry, role, userIDStr string) (*models.TimeEntry, *entryProcessError) {
+	// Workers can only create entries for themselves.
 	if role != "admin" {
-		userIDStr := r.Header.Get("X-User-ID")
 		uid, _ := strconv.ParseUint(userIDStr, 10, 32)
 		entry.UserID = uint(uid)
 	}
 
 	if entry.UserID == 0 || entry.ProductionOrderID == 0 || entry.ServiceID == 0 {
-		http.Error(w, "user_id, production_order_id, and service_id are required", http.StatusBadRequest)
-		return
+		return nil, &entryProcessError{StatusCode: http.StatusBadRequest, Message: "user_id, production_order_id, and service_id are required"}
 	}
 
 	if entry.Day == "" || entry.StartTime == "" || entry.EndTime == "" {
-		http.Error(w, "day, start_time, and end_time are required", http.StatusBadRequest)
-		return
+		return nil, &entryProcessError{StatusCode: http.StatusBadRequest, Message: "day, start_time, and end_time are required"}
 	}
 
 	result := db.GetDB().Create(&entry)
 	if result.Error != nil {
 		log.Printf("Error creating time entry: %v", result.Error)
-		http.Error(w, "Error creating time entry", http.StatusInternalServerError)
-		return
+		return nil, &entryProcessError{StatusCode: http.StatusInternalServerError, Message: "Error creating time entry"}
 	}
 
 	db.GetDB().Preload("User").Preload("ProductionOrder.Product").Preload("Service").First(&entry, entry.ID)
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(entry)
+	return &entry, nil
 }
 
 func getTimeEntry(w http.ResponseWriter, r *http.Request) {
