@@ -57,6 +57,7 @@ func main() {
 	r.HandleFunc("/auth/register-device", auth.RequireAdmin(handlers.RegisterDeviceHandler)).Methods("POST")
 	r.HandleFunc("/users", auth.RequireAdmin(handlers.UsersHandler))
 	r.HandleFunc("/users/{id}", auth.RequireAdmin(handlers.UserHandler))
+	r.HandleFunc("/users/{id}/preferences", auth.RequireUserAuth(handlers.UserPreferencesHandler)).Methods("GET", "PUT")
 	r.HandleFunc("/devices", auth.RequireAdmin(handlers.DevicesHandler))
 	r.HandleFunc("/devices/{id}", auth.RequireAdmin(handlers.DeviceHandler))
 

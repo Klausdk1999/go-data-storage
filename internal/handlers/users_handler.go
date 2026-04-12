@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -240,5 +241,101 @@ func deleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// UserPreferencesHandler handles GET and PUT for /users/{id}/preferences
+func UserPreferencesHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	userIDStr, ok := vars["id"]
+	if !ok {
+		http.Error(w, "User ID required", http.StatusBadRequest)
+		return
+	}
+
+	userID, err := strconv.ParseUint(userIDStr, 10, 32)
+	if err != nil {
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	// Ownership check: non-admin users can only access their own preferences
+	requestingUserID := r.Header.Get("X-User-ID")
+	requestingUserRole := r.Header.Get("X-User-Role")
+	if requestingUserRole != "admin" && requestingUserID != fmt.Sprintf("%d", userID) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	switch r.Method {
+	case "GET":
+		getUserPreferences(w, r, uint(userID))
+	case "PUT":
+		putUserPreferences(w, r, uint(userID))
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func getUserPreferences(w http.ResponseWriter, r *http.Request, userID uint) {
+	var user models.User
+	result := db.GetDB().First(&user, userID)
+	if result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			http.Error(w, "User not found", http.StatusNotFound)
+		} else {
+			log.Printf("Error fetching user: %v", result.Error)
+			http.Error(w, "Error fetching user", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	prefs := user.Preferences
+	if prefs == nil {
+		prefs = models.JSONB{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(prefs)
+}
+
+func putUserPreferences(w http.ResponseWriter, r *http.Request, userID uint) {
+	var user models.User
+	result := db.GetDB().First(&user, userID)
+	if result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			http.Error(w, "User not found", http.StatusNotFound)
+		} else {
+			log.Printf("Error fetching user: %v", result.Error)
+			http.Error(w, "Error fetching user", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	var incoming models.JSONB
+	if err := json.NewDecoder(r.Body).Decode(&incoming); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	// Deep-merge: start with existing preferences, overwrite with incoming keys
+	merged := models.JSONB{}
+	if user.Preferences != nil {
+		for k, v := range user.Preferences {
+			merged[k] = v
+		}
+	}
+	for k, v := range incoming {
+		merged[k] = v
+	}
+
+	user.Preferences = merged
+	if err := db.GetDB().Save(&user).Error; err != nil {
+		log.Printf("Error saving preferences: %v", err)
+		http.Error(w, "Error saving preferences", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(merged)
 }
 

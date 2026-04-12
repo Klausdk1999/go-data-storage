@@ -15,6 +15,7 @@ import (
 	"data-storage/internal/models"
 
 	"github.com/glebarez/sqlite"
+	"github.com/gorilla/mux"
 	"gorm.io/gorm"
 )
 
@@ -686,5 +687,97 @@ func TestGenericDataHandler_ApiKeyAuth(t *testing.T) {
 	signals := getSignalsForDevice(t, testDB, device.ID)
 	if len(signals) != 1 || signals[0].Name != "temperatura" {
 		t.Errorf("Expected 1 signal named 'temperatura', got %v", signals)
+	}
+}
+
+// --- User Preferences Tests ---
+
+func TestGetUserPreferences(t *testing.T) {
+	testDB := setupTestDB(t)
+	user := createTestUser(t, testDB, "Prefs User", "prefs@test.com", "pass123", "worker")
+
+	// Set preferences directly in DB
+	prefs := models.JSONB{"theme": "dark", "language": "pt-BR"}
+	testDB.Model(&user).Update("preferences", prefs)
+
+	req := httptest.NewRequest("GET", "/users/"+strconv.Itoa(int(user.ID))+"/preferences", nil)
+	req.Header.Set("X-User-ID", strconv.Itoa(int(user.ID)))
+	req.Header.Set("X-User-Role", "worker")
+	req = mux.SetURLVars(req, map[string]string{"id": strconv.Itoa(int(user.ID))})
+	w := httptest.NewRecorder()
+
+	handlers.UserPreferencesHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if result["theme"] != "dark" {
+		t.Errorf("Expected theme 'dark', got %v", result["theme"])
+	}
+	if result["language"] != "pt-BR" {
+		t.Errorf("Expected language 'pt-BR', got %v", result["language"])
+	}
+}
+
+func TestPutUserPreferences(t *testing.T) {
+	testDB := setupTestDB(t)
+	user := createTestUser(t, testDB, "Prefs User", "prefs@test.com", "pass123", "worker")
+
+	// Set initial preferences
+	initial := models.JSONB{"theme": "light", "language": "en"}
+	testDB.Model(&user).Update("preferences", initial)
+
+	// PUT new preferences (should merge, overwriting theme but keeping language)
+	newPrefs := map[string]interface{}{"theme": "dark", "sidebar_collapsed": true}
+	jsonData, _ := json.Marshal(newPrefs)
+	req := httptest.NewRequest("PUT", "/users/"+strconv.Itoa(int(user.ID))+"/preferences", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-User-ID", strconv.Itoa(int(user.ID)))
+	req.Header.Set("X-User-Role", "worker")
+	req = mux.SetURLVars(req, map[string]string{"id": strconv.Itoa(int(user.ID))})
+	w := httptest.NewRecorder()
+
+	handlers.UserPreferencesHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	// Verify in DB
+	var updated models.User
+	testDB.First(&updated, user.ID)
+
+	if updated.Preferences["theme"] != "dark" {
+		t.Errorf("Expected theme 'dark', got %v", updated.Preferences["theme"])
+	}
+	if updated.Preferences["language"] != "en" {
+		t.Errorf("Expected language 'en' (preserved from merge), got %v", updated.Preferences["language"])
+	}
+	if updated.Preferences["sidebar_collapsed"] != true {
+		t.Errorf("Expected sidebar_collapsed true, got %v", updated.Preferences["sidebar_collapsed"])
+	}
+}
+
+func TestUserPreferences_CannotAccessOtherUser(t *testing.T) {
+	testDB := setupTestDB(t)
+	user1 := createTestUser(t, testDB, "User One", "user1@test.com", "pass123", "worker")
+	user2 := createTestUser(t, testDB, "User Two", "user2@test.com", "pass123", "worker")
+
+	// User 2 tries to access User 1's preferences
+	req := httptest.NewRequest("GET", "/users/"+strconv.Itoa(int(user1.ID))+"/preferences", nil)
+	req.Header.Set("X-User-ID", strconv.Itoa(int(user2.ID)))
+	req.Header.Set("X-User-Role", "worker")
+	req = mux.SetURLVars(req, map[string]string{"id": strconv.Itoa(int(user1.ID))})
+	w := httptest.NewRecorder()
+
+	handlers.UserPreferencesHandler(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("Expected 403 when worker accesses another user's preferences, got %d", w.Code)
 	}
 }

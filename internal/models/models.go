@@ -17,6 +17,7 @@ type User struct {
 	Type         string    `gorm:"column:type;default:'worker';check:type IN ('admin','worker')" json:"type,omitempty"`
 	Rfid         string    `gorm:"uniqueIndex" json:"rfid,omitempty"`
 	IsActive     bool      `gorm:"default:true" json:"is_active,omitempty"`
+	Preferences  JSONB     `gorm:"type:jsonb;default:'{}'" json:"preferences,omitempty"`
 	Devices      []Device  `gorm:"foreignKey:UserID" json:"devices,omitempty"`
 	CreatedAt    time.Time `json:"created_at,omitempty"`
 	UpdatedAt    time.Time `json:"updated_at,omitempty"`
