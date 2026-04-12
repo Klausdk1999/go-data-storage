@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -52,6 +53,13 @@ func main() {
 
 	// Generic device data endpoint (API key or device token auth) — must be before /devices/{id}
 	r.HandleFunc("/devices/data", handlers.GenericDataHandler).Methods("POST")
+
+	// Image upload/download/delete endpoints (must be before /{entity}/{id} wildcard routes)
+	for _, entity := range []string{"products", "users", "devices"} {
+		r.HandleFunc(fmt.Sprintf("/%s/{id}/image", entity), handlers.ImageDownloadHandler(entity)).Methods("GET")
+		r.HandleFunc(fmt.Sprintf("/%s/{id}/image", entity), auth.RequireAdmin(handlers.ImageUploadHandler(entity))).Methods("PUT")
+		r.HandleFunc(fmt.Sprintf("/%s/{id}/image", entity), auth.RequireAdmin(handlers.ImageDeleteHandler(entity))).Methods("DELETE")
+	}
 
 	// Admin-only endpoints
 	r.HandleFunc("/auth/register-device", auth.RequireAdmin(handlers.RegisterDeviceHandler)).Methods("POST")
