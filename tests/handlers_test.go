@@ -962,3 +962,877 @@ func TestImageDelete_Product(t *testing.T) {
 		t.Errorf("Expected image_type to be empty after delete, got %q", saved.ImageType)
 	}
 }
+
+// ── Products CRUD Tests ──────────────────────────────────────────────────────
+
+func TestGetAllProducts(t *testing.T) {
+	testDB := setupTestDB(t)
+
+	testDB.Create(&models.Product{Name: "Product A", SKU: "SKU-A", Category: "cat1", IsActive: true})
+	testDB.Create(&models.Product{Name: "Product B", SKU: "SKU-B", Category: "cat2", IsActive: true})
+
+	req := httptest.NewRequest("GET", "/products", nil)
+	w := httptest.NewRecorder()
+
+	handlers.ProductsHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var products []models.Product
+	if err := json.Unmarshal(w.Body.Bytes(), &products); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if len(products) != 2 {
+		t.Errorf("Expected 2 products, got %d", len(products))
+	}
+}
+
+func TestCreateProduct(t *testing.T) {
+	setupTestDB(t)
+
+	payload := map[string]interface{}{
+		"name":      "New Product",
+		"sku":       "SKU-NEW",
+		"category":  "electronics",
+		"is_active": true,
+	}
+	jsonData, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/products", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handlers.ProductsHandler(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Expected status 201, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var product models.Product
+	if err := json.Unmarshal(w.Body.Bytes(), &product); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if product.Name != "New Product" {
+		t.Errorf("Expected name 'New Product', got %q", product.Name)
+	}
+	if product.SKU != "SKU-NEW" {
+		t.Errorf("Expected SKU 'SKU-NEW', got %q", product.SKU)
+	}
+	if product.Category != "electronics" {
+		t.Errorf("Expected category 'electronics', got %q", product.Category)
+	}
+	if !product.IsActive {
+		t.Error("Expected is_active to be true")
+	}
+}
+
+func TestCreateProduct_MissingName(t *testing.T) {
+	setupTestDB(t)
+
+	payload := map[string]interface{}{
+		"sku":      "SKU-NO-NAME",
+		"category": "test",
+	}
+	jsonData, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/products", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handlers.ProductsHandler(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGetProductByID(t *testing.T) {
+	testDB := setupTestDB(t)
+
+	product := models.Product{Name: "Lookup Product", SKU: "SKU-LOOK", Category: "test", IsActive: true}
+	testDB.Create(&product)
+
+	req := httptest.NewRequest("GET", "/products/"+strconv.Itoa(int(product.ID)), nil)
+	req = mux.SetURLVars(req, map[string]string{"id": strconv.Itoa(int(product.ID))})
+	w := httptest.NewRecorder()
+
+	handlers.ProductHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var result models.Product
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if result.Name != "Lookup Product" {
+		t.Errorf("Expected name 'Lookup Product', got %q", result.Name)
+	}
+	if result.SKU != "SKU-LOOK" {
+		t.Errorf("Expected SKU 'SKU-LOOK', got %q", result.SKU)
+	}
+}
+
+func TestGetProductByID_NotFound(t *testing.T) {
+	setupTestDB(t)
+
+	req := httptest.NewRequest("GET", "/products/9999", nil)
+	req = mux.SetURLVars(req, map[string]string{"id": "9999"})
+	w := httptest.NewRecorder()
+
+	handlers.ProductHandler(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpdateProduct(t *testing.T) {
+	testDB := setupTestDB(t)
+
+	product := models.Product{Name: "Old Name", SKU: "SKU-OLD", Category: "old", IsActive: true}
+	testDB.Create(&product)
+
+	payload := map[string]interface{}{
+		"name":      "Updated Name",
+		"sku":       "SKU-UPD",
+		"category":  "updated",
+		"is_active": false,
+	}
+	jsonData, _ := json.Marshal(payload)
+	req := httptest.NewRequest("PUT", "/products/"+strconv.Itoa(int(product.ID)), bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	req = mux.SetURLVars(req, map[string]string{"id": strconv.Itoa(int(product.ID))})
+	w := httptest.NewRecorder()
+
+	handlers.ProductHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var result models.Product
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if result.Name != "Updated Name" {
+		t.Errorf("Expected name 'Updated Name', got %q", result.Name)
+	}
+	if result.SKU != "SKU-UPD" {
+		t.Errorf("Expected SKU 'SKU-UPD', got %q", result.SKU)
+	}
+	if result.Category != "updated" {
+		t.Errorf("Expected category 'updated', got %q", result.Category)
+	}
+}
+
+func TestDeleteProduct(t *testing.T) {
+	testDB := setupTestDB(t)
+
+	product := models.Product{Name: "Delete Me", SKU: "SKU-DEL", Category: "test", IsActive: true}
+	testDB.Create(&product)
+
+	req := httptest.NewRequest("DELETE", "/products/"+strconv.Itoa(int(product.ID)), nil)
+	req = mux.SetURLVars(req, map[string]string{"id": strconv.Itoa(int(product.ID))})
+	w := httptest.NewRecorder()
+
+	handlers.ProductHandler(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Errorf("Expected status 204, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	// Verify product is gone
+	var count int64
+	testDB.Model(&models.Product{}).Where("id = ?", product.ID).Count(&count)
+	if count != 0 {
+		t.Errorf("Expected product to be deleted, but found %d", count)
+	}
+}
+
+// ── Services CRUD Tests ──────────────────────────────────────────────────────
+
+func TestGetAllServices(t *testing.T) {
+	testDB := setupTestDB(t)
+
+	testDB.Create(&models.Service{Code: "SVC-1", Name: "Service A", IsActive: true})
+	testDB.Create(&models.Service{Code: "SVC-2", Name: "Service B", IsActive: true})
+
+	req := httptest.NewRequest("GET", "/services", nil)
+	w := httptest.NewRecorder()
+
+	handlers.ServicesHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var services []models.Service
+	if err := json.Unmarshal(w.Body.Bytes(), &services); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if len(services) != 2 {
+		t.Errorf("Expected 2 services, got %d", len(services))
+	}
+}
+
+func TestCreateService(t *testing.T) {
+	setupTestDB(t)
+
+	payload := map[string]interface{}{
+		"code": "SVC-NEW",
+		"name": "New Service",
+	}
+	jsonData, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/services", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-User-Role", "admin")
+	w := httptest.NewRecorder()
+
+	handlers.ServicesHandler(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Expected status 201, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var service models.Service
+	if err := json.Unmarshal(w.Body.Bytes(), &service); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if service.Code != "SVC-NEW" {
+		t.Errorf("Expected code 'SVC-NEW', got %q", service.Code)
+	}
+	if service.Name != "New Service" {
+		t.Errorf("Expected name 'New Service', got %q", service.Name)
+	}
+}
+
+func TestCreateService_NonAdmin(t *testing.T) {
+	setupTestDB(t)
+
+	payload := map[string]interface{}{
+		"code": "SVC-NOAUTH",
+		"name": "Unauthorized Service",
+	}
+	jsonData, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/services", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-User-Role", "worker")
+	w := httptest.NewRecorder()
+
+	handlers.ServicesHandler(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("Expected status 403, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateService_MissingFields(t *testing.T) {
+	setupTestDB(t)
+
+	payload := map[string]interface{}{
+		"code": "",
+		"name": "",
+	}
+	jsonData, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/services", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-User-Role", "admin")
+	w := httptest.NewRecorder()
+
+	handlers.ServicesHandler(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGetServiceByID(t *testing.T) {
+	testDB := setupTestDB(t)
+
+	service := models.Service{Code: "SVC-GET", Name: "Get Service", IsActive: true}
+	testDB.Create(&service)
+
+	req := httptest.NewRequest("GET", "/services/"+strconv.Itoa(int(service.ID)), nil)
+	req = mux.SetURLVars(req, map[string]string{"id": strconv.Itoa(int(service.ID))})
+	w := httptest.NewRecorder()
+
+	handlers.ServiceHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var result models.Service
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if result.Code != "SVC-GET" {
+		t.Errorf("Expected code 'SVC-GET', got %q", result.Code)
+	}
+	if result.Name != "Get Service" {
+		t.Errorf("Expected name 'Get Service', got %q", result.Name)
+	}
+}
+
+func TestUpdateService(t *testing.T) {
+	testDB := setupTestDB(t)
+
+	service := models.Service{Code: "SVC-OLD", Name: "Old Service", IsActive: true}
+	testDB.Create(&service)
+
+	payload := map[string]interface{}{
+		"code":      "SVC-UPD",
+		"name":      "Updated Service",
+		"is_active": false,
+	}
+	jsonData, _ := json.Marshal(payload)
+	req := httptest.NewRequest("PUT", "/services/"+strconv.Itoa(int(service.ID)), bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-User-Role", "admin")
+	req = mux.SetURLVars(req, map[string]string{"id": strconv.Itoa(int(service.ID))})
+	w := httptest.NewRecorder()
+
+	handlers.ServiceHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var result models.Service
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if result.Code != "SVC-UPD" {
+		t.Errorf("Expected code 'SVC-UPD', got %q", result.Code)
+	}
+	if result.Name != "Updated Service" {
+		t.Errorf("Expected name 'Updated Service', got %q", result.Name)
+	}
+}
+
+func TestDeleteService(t *testing.T) {
+	testDB := setupTestDB(t)
+
+	service := models.Service{Code: "SVC-DEL", Name: "Delete Service", IsActive: true}
+	testDB.Create(&service)
+
+	req := httptest.NewRequest("DELETE", "/services/"+strconv.Itoa(int(service.ID)), nil)
+	req.Header.Set("X-User-Role", "admin")
+	req = mux.SetURLVars(req, map[string]string{"id": strconv.Itoa(int(service.ID))})
+	w := httptest.NewRecorder()
+
+	handlers.ServiceHandler(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Errorf("Expected status 204, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	// Verify service is gone
+	var count int64
+	testDB.Model(&models.Service{}).Where("id = ?", service.ID).Count(&count)
+	if count != 0 {
+		t.Errorf("Expected service to be deleted, but found %d", count)
+	}
+}
+
+// ── Signals CRUD Tests ───────────────────────────────────────────────────────
+
+func TestGetAllSignals(t *testing.T) {
+	testDB := setupTestDB(t)
+
+	device := createTestDevice(t, testDB, "sig-device", "sig-token")
+	testDB.Create(&models.Signal{DeviceID: device.ID, Name: "Signal A", SignalType: "analogic", Direction: "input", IsActive: true})
+	testDB.Create(&models.Signal{DeviceID: device.ID, Name: "Signal B", SignalType: "digital", Direction: "output", IsActive: true})
+
+	req := httptest.NewRequest("GET", "/signals", nil)
+	w := httptest.NewRecorder()
+
+	handlers.SignalsHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var signals []models.Signal
+	if err := json.Unmarshal(w.Body.Bytes(), &signals); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if len(signals) != 2 {
+		t.Errorf("Expected 2 signals, got %d", len(signals))
+	}
+}
+
+func TestCreateSignal(t *testing.T) {
+	testDB := setupTestDB(t)
+
+	device := createTestDevice(t, testDB, "sig-create-dev", "sig-create-token")
+
+	payload := map[string]interface{}{
+		"device_id":   device.ID,
+		"name":        "Temperature",
+		"signal_type": "analogic",
+		"direction":   "input",
+	}
+	jsonData, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/signals", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handlers.SignalsHandler(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Expected status 201, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var signal models.Signal
+	if err := json.Unmarshal(w.Body.Bytes(), &signal); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if signal.Name != "Temperature" {
+		t.Errorf("Expected name 'Temperature', got %q", signal.Name)
+	}
+	if signal.SignalType != "analogic" {
+		t.Errorf("Expected signal_type 'analogic', got %q", signal.SignalType)
+	}
+	if signal.Direction != "input" {
+		t.Errorf("Expected direction 'input', got %q", signal.Direction)
+	}
+	if signal.DeviceID != device.ID {
+		t.Errorf("Expected device_id %d, got %d", device.ID, signal.DeviceID)
+	}
+}
+
+func TestCreateSignal_MissingDeviceID(t *testing.T) {
+	setupTestDB(t)
+
+	payload := map[string]interface{}{
+		"name":        "No Device Signal",
+		"signal_type": "analogic",
+		"direction":   "input",
+	}
+	jsonData, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/signals", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handlers.SignalsHandler(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateSignal_InvalidDevice(t *testing.T) {
+	setupTestDB(t)
+
+	payload := map[string]interface{}{
+		"device_id":   9999,
+		"name":        "Invalid Device Signal",
+		"signal_type": "analogic",
+		"direction":   "input",
+	}
+	jsonData, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/signals", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handlers.SignalsHandler(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGetSignalByID(t *testing.T) {
+	testDB := setupTestDB(t)
+
+	device := createTestDevice(t, testDB, "sig-get-dev", "sig-get-token")
+	signal := models.Signal{DeviceID: device.ID, Name: "Get Signal", SignalType: "analogic", Direction: "input", IsActive: true}
+	testDB.Create(&signal)
+
+	req := httptest.NewRequest("GET", "/signals/"+strconv.Itoa(int(signal.ID)), nil)
+	req = mux.SetURLVars(req, map[string]string{"id": strconv.Itoa(int(signal.ID))})
+	w := httptest.NewRecorder()
+
+	handlers.SignalHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var result models.Signal
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if result.Name != "Get Signal" {
+		t.Errorf("Expected name 'Get Signal', got %q", result.Name)
+	}
+}
+
+func TestUpdateSignal(t *testing.T) {
+	testDB := setupTestDB(t)
+
+	device := createTestDevice(t, testDB, "sig-upd-dev", "sig-upd-token")
+	signal := models.Signal{DeviceID: device.ID, Name: "Old Signal", SignalType: "analogic", Direction: "input", Unit: "C", IsActive: true}
+	testDB.Create(&signal)
+
+	payload := map[string]interface{}{
+		"name":      "Updated Signal",
+		"unit":      "F",
+		"is_active": true,
+	}
+	jsonData, _ := json.Marshal(payload)
+	req := httptest.NewRequest("PUT", "/signals/"+strconv.Itoa(int(signal.ID)), bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	req = mux.SetURLVars(req, map[string]string{"id": strconv.Itoa(int(signal.ID))})
+	w := httptest.NewRecorder()
+
+	handlers.SignalHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var result models.Signal
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if result.Name != "Updated Signal" {
+		t.Errorf("Expected name 'Updated Signal', got %q", result.Name)
+	}
+	if result.Unit != "F" {
+		t.Errorf("Expected unit 'F', got %q", result.Unit)
+	}
+}
+
+func TestDeleteSignal(t *testing.T) {
+	testDB := setupTestDB(t)
+
+	device := createTestDevice(t, testDB, "sig-del-dev", "sig-del-token")
+	signal := models.Signal{DeviceID: device.ID, Name: "Delete Signal", SignalType: "analogic", Direction: "input", IsActive: true}
+	testDB.Create(&signal)
+
+	req := httptest.NewRequest("DELETE", "/signals/"+strconv.Itoa(int(signal.ID)), nil)
+	req = mux.SetURLVars(req, map[string]string{"id": strconv.Itoa(int(signal.ID))})
+	w := httptest.NewRecorder()
+
+	handlers.SignalHandler(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Errorf("Expected status 204, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	// Verify signal is gone
+	var count int64
+	testDB.Model(&models.Signal{}).Where("id = ?", signal.ID).Count(&count)
+	if count != 0 {
+		t.Errorf("Expected signal to be deleted, but found %d", count)
+	}
+}
+
+// ── SignalValues CRUD Tests ──────────────────────────────────────────────────
+
+func TestCreateSignalValue_Analogic(t *testing.T) {
+	testDB := setupTestDB(t)
+
+	device := createTestDevice(t, testDB, "sv-analog-dev", "sv-analog-token")
+	signal := models.Signal{DeviceID: device.ID, Name: "Temp", SignalType: "analogic", Direction: "input", IsActive: true}
+	testDB.Create(&signal)
+
+	val := 23.5
+	payload := map[string]interface{}{
+		"signal_id": signal.ID,
+		"value":     val,
+	}
+	jsonData, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/signal-values", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handlers.SignalValuesHandler(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Expected status 201, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var result models.SignalValue
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if result.Value == nil || *result.Value != val {
+		t.Errorf("Expected value %f, got %v", val, result.Value)
+	}
+	if result.SignalID != signal.ID {
+		t.Errorf("Expected signal_id %d, got %d", signal.ID, result.SignalID)
+	}
+}
+
+func TestCreateSignalValue_Digital(t *testing.T) {
+	testDB := setupTestDB(t)
+
+	device := createTestDevice(t, testDB, "sv-digital-dev", "sv-digital-token")
+	signal := models.Signal{DeviceID: device.ID, Name: "Switch", SignalType: "digital", Direction: "input", IsActive: true}
+	testDB.Create(&signal)
+
+	payload := map[string]interface{}{
+		"signal_id":     signal.ID,
+		"digital_value": true,
+	}
+	jsonData, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/signal-values", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handlers.SignalValuesHandler(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Expected status 201, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var result models.SignalValue
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if result.DigitalValue == nil || *result.DigitalValue != true {
+		t.Errorf("Expected digital_value true, got %v", result.DigitalValue)
+	}
+}
+
+func TestCreateSignalValue_MissingSignalID(t *testing.T) {
+	setupTestDB(t)
+
+	payload := map[string]interface{}{
+		"value": 10.0,
+	}
+	jsonData, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/signal-values", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handlers.SignalValuesHandler(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGetSignalValueByID(t *testing.T) {
+	testDB := setupTestDB(t)
+
+	device := createTestDevice(t, testDB, "sv-get-dev", "sv-get-token")
+	signal := models.Signal{DeviceID: device.ID, Name: "GetVal", SignalType: "analogic", Direction: "input", IsActive: true}
+	testDB.Create(&signal)
+
+	val := 42.0
+	sv := models.SignalValue{SignalID: signal.ID, Value: &val}
+	testDB.Create(&sv)
+
+	req := httptest.NewRequest("GET", "/signal-values/"+strconv.Itoa(int(sv.ID)), nil)
+	req = mux.SetURLVars(req, map[string]string{"id": strconv.Itoa(int(sv.ID))})
+	w := httptest.NewRecorder()
+
+	handlers.SignalValueHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var result models.SignalValue
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if result.Value == nil || *result.Value != val {
+		t.Errorf("Expected value %f, got %v", val, result.Value)
+	}
+}
+
+func TestDeleteSignalValue(t *testing.T) {
+	testDB := setupTestDB(t)
+
+	device := createTestDevice(t, testDB, "sv-del-dev", "sv-del-token")
+	signal := models.Signal{DeviceID: device.ID, Name: "DelVal", SignalType: "analogic", Direction: "input", IsActive: true}
+	testDB.Create(&signal)
+
+	val := 99.0
+	sv := models.SignalValue{SignalID: signal.ID, Value: &val}
+	testDB.Create(&sv)
+
+	req := httptest.NewRequest("DELETE", "/signal-values/"+strconv.Itoa(int(sv.ID)), nil)
+	req = mux.SetURLVars(req, map[string]string{"id": strconv.Itoa(int(sv.ID))})
+	w := httptest.NewRecorder()
+
+	handlers.SignalValueHandler(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Errorf("Expected status 204, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	// Verify signal value is gone
+	var count int64
+	testDB.Model(&models.SignalValue{}).Where("id = ?", sv.ID).Count(&count)
+	if count != 0 {
+		t.Errorf("Expected signal value to be deleted, but found %d", count)
+	}
+}
+
+// ── Customers CRUD Tests ─────────────────────────────────────────────────────
+
+func TestGetAllCustomers(t *testing.T) {
+	testDB := setupTestDB(t)
+
+	testDB.Create(&models.Customer{Name: "Customer A", Phone: "111-1111"})
+	testDB.Create(&models.Customer{Name: "Customer B", Phone: "222-2222"})
+
+	req := httptest.NewRequest("GET", "/customers", nil)
+	w := httptest.NewRecorder()
+
+	handlers.CustomersHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var customers []models.Customer
+	if err := json.Unmarshal(w.Body.Bytes(), &customers); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if len(customers) != 2 {
+		t.Errorf("Expected 2 customers, got %d", len(customers))
+	}
+}
+
+func TestCreateCustomer(t *testing.T) {
+	setupTestDB(t)
+
+	payload := map[string]interface{}{
+		"name":  "New Customer",
+		"phone": "333-3333",
+	}
+	jsonData, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/customers", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handlers.CustomersHandler(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Expected status 201, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var customer models.Customer
+	if err := json.Unmarshal(w.Body.Bytes(), &customer); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if customer.Name != "New Customer" {
+		t.Errorf("Expected name 'New Customer', got %q", customer.Name)
+	}
+	if customer.Phone != "333-3333" {
+		t.Errorf("Expected phone '333-3333', got %q", customer.Phone)
+	}
+}
+
+func TestCreateCustomer_MissingName(t *testing.T) {
+	setupTestDB(t)
+
+	payload := map[string]interface{}{
+		"phone": "444-4444",
+	}
+	jsonData, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/customers", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handlers.CustomersHandler(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGetCustomerByID(t *testing.T) {
+	testDB := setupTestDB(t)
+
+	customer := models.Customer{Name: "Lookup Customer", Phone: "555-5555"}
+	testDB.Create(&customer)
+
+	req := httptest.NewRequest("GET", "/customers/"+strconv.Itoa(int(customer.ID)), nil)
+	req = mux.SetURLVars(req, map[string]string{"id": strconv.Itoa(int(customer.ID))})
+	w := httptest.NewRecorder()
+
+	handlers.CustomerByIDHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var result models.Customer
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if result.Name != "Lookup Customer" {
+		t.Errorf("Expected name 'Lookup Customer', got %q", result.Name)
+	}
+	if result.Phone != "555-5555" {
+		t.Errorf("Expected phone '555-5555', got %q", result.Phone)
+	}
+}
+
+func TestUpdateCustomer(t *testing.T) {
+	testDB := setupTestDB(t)
+
+	customer := models.Customer{Name: "Old Customer", Phone: "666-6666"}
+	testDB.Create(&customer)
+
+	payload := map[string]interface{}{
+		"name":  "Updated Customer",
+		"phone": "777-7777",
+	}
+	jsonData, _ := json.Marshal(payload)
+	req := httptest.NewRequest("PUT", "/customers/"+strconv.Itoa(int(customer.ID)), bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	req = mux.SetURLVars(req, map[string]string{"id": strconv.Itoa(int(customer.ID))})
+	w := httptest.NewRecorder()
+
+	handlers.CustomerByIDHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var result models.Customer
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if result.Name != "Updated Customer" {
+		t.Errorf("Expected name 'Updated Customer', got %q", result.Name)
+	}
+	if result.Phone != "777-7777" {
+		t.Errorf("Expected phone '777-7777', got %q", result.Phone)
+	}
+}
+
+func TestDeleteCustomer(t *testing.T) {
+	testDB := setupTestDB(t)
+
+	customer := models.Customer{Name: "Delete Customer", Phone: "888-8888"}
+	testDB.Create(&customer)
+
+	req := httptest.NewRequest("DELETE", "/customers/"+strconv.Itoa(int(customer.ID)), nil)
+	req = mux.SetURLVars(req, map[string]string{"id": strconv.Itoa(int(customer.ID))})
+	w := httptest.NewRecorder()
+
+	handlers.CustomerByIDHandler(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Errorf("Expected status 204, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	// Verify customer is gone
+	var count int64
+	testDB.Model(&models.Customer{}).Where("id = ?", customer.ID).Count(&count)
+	if count != 0 {
+		t.Errorf("Expected customer to be deleted, but found %d", count)
+	}
+}
