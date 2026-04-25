@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 
 	"data-storage/internal/auth"
@@ -1834,5 +1835,338 @@ func TestDeleteCustomer(t *testing.T) {
 	testDB.Model(&models.Customer{}).Where("id = ?", customer.ID).Count(&count)
 	if count != 0 {
 		t.Errorf("Expected customer to be deleted, but found %d", count)
+	}
+}
+
+// ── Image MIME Type Validation Tests ────────────────────────────────────────
+
+func TestImageUpload_InvalidMIME(t *testing.T) {
+	testDB := setupTestDB(t)
+
+	product := models.Product{Name: "MIME Test", SKU: "MIME-1", Category: "test", IsActive: true}
+	testDB.Create(&product)
+
+	// Plain text bytes — http.DetectContentType returns "text/plain"
+	textData := []byte("this is not an image, just plain text content")
+	req := createMultipartImageRequest(t, "PUT", "/products/"+strconv.Itoa(int(product.ID))+"/image", textData)
+	req = mux.SetURLVars(req, map[string]string{"id": strconv.Itoa(int(product.ID))})
+	w := httptest.NewRecorder()
+
+	handler := handlers.ImageUploadHandler("products")
+	handler(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400 for non-image MIME type, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestImageUpload_ValidJPEG(t *testing.T) {
+	testDB := setupTestDB(t)
+
+	product := models.Product{Name: "JPEG Test", SKU: "JPEG-1", Category: "test", IsActive: true}
+	testDB.Create(&product)
+
+	// Minimal JPEG (JFIF header) — http.DetectContentType returns "image/jpeg"
+	jpegData := []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00}
+	req := createMultipartImageRequest(t, "PUT", "/products/"+strconv.Itoa(int(product.ID))+"/image", jpegData)
+	req = mux.SetURLVars(req, map[string]string{"id": strconv.Itoa(int(product.ID))})
+	w := httptest.NewRecorder()
+
+	handler := handlers.ImageUploadHandler("products")
+	handler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200 for valid JPEG, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	// Verify the stored image_type contains "image/jpeg"
+	var saved models.Product
+	testDB.First(&saved, product.ID)
+	if !strings.Contains(saved.ImageType, "image/jpeg") {
+		t.Errorf("Expected image_type to contain 'image/jpeg', got %q", saved.ImageType)
+	}
+}
+
+func TestImageDownload_NoImage(t *testing.T) {
+	testDB := setupTestDB(t)
+
+	// Product WITHOUT image data
+	product := models.Product{Name: "No Image", SKU: "NOIMG-1", Category: "test", IsActive: true}
+	testDB.Create(&product)
+
+	req := httptest.NewRequest("GET", "/products/"+strconv.Itoa(int(product.ID))+"/image", nil)
+	req = mux.SetURLVars(req, map[string]string{"id": strconv.Itoa(int(product.ID))})
+	w := httptest.NewRecorder()
+
+	handler := handlers.ImageDownloadHandler("products")
+	handler(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404 for product without image, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestImageUpload_InvalidEntity(t *testing.T) {
+	setupTestDB(t)
+
+	req := httptest.NewRequest("PUT", "/invalid_entity/1/image", nil)
+	req = mux.SetURLVars(req, map[string]string{"id": "1"})
+	w := httptest.NewRecorder()
+
+	handler := handlers.ImageUploadHandler("invalid_entity")
+	handler(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400 for invalid entity, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+// ── Auth Middleware Tests ────────────────────────────────────────────────────
+
+func TestRequireUserAuth_ValidToken(t *testing.T) {
+	testDB := setupTestDB(t)
+	user := createTestUser(t, testDB, "Auth User", "authuser@test.com", "pass123", "worker")
+
+	token, err := auth.GenerateJWT(user.ID, user.Email, user.Type)
+	if err != nil {
+		t.Fatalf("Failed to generate JWT: %v", err)
+	}
+
+	called := false
+	var capturedUserID string
+	inner := func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		capturedUserID = r.Header.Get("X-User-ID")
+		w.WriteHeader(http.StatusOK)
+	}
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	handler := auth.RequireUserAuth(inner)
+	handler(w, req)
+
+	if !called {
+		t.Error("Expected inner handler to be called")
+	}
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+	if capturedUserID != strconv.Itoa(int(user.ID)) {
+		t.Errorf("Expected X-User-ID %d, got %q", user.ID, capturedUserID)
+	}
+}
+
+func TestRequireUserAuth_NoToken(t *testing.T) {
+	setupTestDB(t)
+
+	inner := func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	w := httptest.NewRecorder()
+
+	handler := auth.RequireUserAuth(inner)
+	handler(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401, got %d", w.Code)
+	}
+}
+
+func TestRequireUserAuth_InvalidToken(t *testing.T) {
+	setupTestDB(t)
+
+	inner := func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "Bearer invalid-jwt-token")
+	w := httptest.NewRecorder()
+
+	handler := auth.RequireUserAuth(inner)
+	handler(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401, got %d", w.Code)
+	}
+}
+
+func TestRequireAdmin_AdminUser(t *testing.T) {
+	testDB := setupTestDB(t)
+	admin := createTestUser(t, testDB, "Admin Auth", "adminauth@test.com", "pass123", "admin")
+
+	token, err := auth.GenerateJWT(admin.ID, admin.Email, admin.Type)
+	if err != nil {
+		t.Fatalf("Failed to generate JWT: %v", err)
+	}
+
+	called := false
+	inner := func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	handler := auth.RequireAdmin(inner)
+	handler(w, req)
+
+	if !called {
+		t.Error("Expected inner handler to be called for admin user")
+	}
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+}
+
+func TestRequireAdmin_WorkerUser(t *testing.T) {
+	testDB := setupTestDB(t)
+	worker := createTestUser(t, testDB, "Worker Auth", "workerauth@test.com", "pass123", "worker")
+
+	token, err := auth.GenerateJWT(worker.ID, worker.Email, worker.Type)
+	if err != nil {
+		t.Fatalf("Failed to generate JWT: %v", err)
+	}
+
+	inner := func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	handler := auth.RequireAdmin(inner)
+	handler(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("Expected status 403 for worker user, got %d", w.Code)
+	}
+}
+
+func TestRequireDeviceAuth_ValidToken(t *testing.T) {
+	testDB := setupTestDB(t)
+	device := createTestDevice(t, testDB, "auth-device", "device-auth-token-123")
+
+	called := false
+	var capturedDeviceID string
+	inner := func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		capturedDeviceID = r.Header.Get("X-Device-ID")
+		w.WriteHeader(http.StatusOK)
+	}
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "Bearer device-auth-token-123")
+	w := httptest.NewRecorder()
+
+	handler := auth.RequireDeviceAuth(inner)
+	handler(w, req)
+
+	if !called {
+		t.Error("Expected inner handler to be called for valid device token")
+	}
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+	if capturedDeviceID != strconv.Itoa(int(device.ID)) {
+		t.Errorf("Expected X-Device-ID %d, got %q", device.ID, capturedDeviceID)
+	}
+}
+
+func TestRequireDeviceAuth_InvalidToken(t *testing.T) {
+	setupTestDB(t)
+
+	inner := func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "Bearer nonexistent-token")
+	w := httptest.NewRecorder()
+
+	handler := auth.RequireDeviceAuth(inner)
+	handler(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401, got %d", w.Code)
+	}
+}
+
+func TestRequireAnyAuth_UserJWT(t *testing.T) {
+	testDB := setupTestDB(t)
+	user := createTestUser(t, testDB, "Any Auth User", "anyauth@test.com", "pass123", "worker")
+
+	token, err := auth.GenerateJWT(user.ID, user.Email, user.Type)
+	if err != nil {
+		t.Fatalf("Failed to generate JWT: %v", err)
+	}
+
+	called := false
+	var capturedAuthType string
+	inner := func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		capturedAuthType = r.Header.Get("X-Auth-Type")
+		w.WriteHeader(http.StatusOK)
+	}
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	handler := auth.RequireAnyAuth(inner)
+	handler(w, req)
+
+	if !called {
+		t.Error("Expected inner handler to be called")
+	}
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+	if capturedAuthType != "user" {
+		t.Errorf("Expected X-Auth-Type 'user', got %q", capturedAuthType)
+	}
+}
+
+func TestRequireAnyAuth_DeviceToken(t *testing.T) {
+	testDB := setupTestDB(t)
+	createTestDevice(t, testDB, "anyauth-device", "anyauth-device-token")
+
+	called := false
+	var capturedAuthType string
+	inner := func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		capturedAuthType = r.Header.Get("X-Auth-Type")
+		w.WriteHeader(http.StatusOK)
+	}
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "Bearer anyauth-device-token")
+	w := httptest.NewRecorder()
+
+	handler := auth.RequireAnyAuth(inner)
+	handler(w, req)
+
+	if !called {
+		t.Error("Expected inner handler to be called")
+	}
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+	if capturedAuthType != "device" {
+		t.Errorf("Expected X-Auth-Type 'device', got %q", capturedAuthType)
+	}
+}
+
+func TestValidateJWT_MalformedToken(t *testing.T) {
+	_, err := auth.ValidateJWT("invalid.token.here")
+	if err == nil {
+		t.Error("Expected error for malformed token, got nil")
 	}
 }
