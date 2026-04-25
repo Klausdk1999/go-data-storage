@@ -734,8 +734,8 @@ func TestPutUserPreferences(t *testing.T) {
 	initial := models.JSONB{"theme": "light", "language": "en"}
 	testDB.Model(&user).Update("preferences", initial)
 
-	// PUT new preferences (should merge, overwriting theme but keeping language)
-	newPrefs := map[string]interface{}{"theme": "dark", "sidebar_collapsed": true}
+	// PUT new preferences (full overwrite — frontend sends complete state)
+	newPrefs := map[string]interface{}{"theme": "dark", "language": "en", "sidebar_collapsed": true}
 	jsonData, _ := json.Marshal(newPrefs)
 	req := httptest.NewRequest("PUT", "/users/"+strconv.Itoa(int(user.ID))+"/preferences", bytes.NewBuffer(jsonData))
 	req.Header.Set("Content-Type", "application/json")
@@ -750,7 +750,7 @@ func TestPutUserPreferences(t *testing.T) {
 		t.Fatalf("Expected 200, got %d. Body: %s", w.Code, w.Body.String())
 	}
 
-	// Verify in DB
+	// Verify in DB — full overwrite stores exactly what was sent
 	var updated models.User
 	testDB.First(&updated, user.ID)
 
@@ -758,7 +758,7 @@ func TestPutUserPreferences(t *testing.T) {
 		t.Errorf("Expected theme 'dark', got %v", updated.Preferences["theme"])
 	}
 	if updated.Preferences["language"] != "en" {
-		t.Errorf("Expected language 'en' (preserved from merge), got %v", updated.Preferences["language"])
+		t.Errorf("Expected language 'en', got %v", updated.Preferences["language"])
 	}
 	if updated.Preferences["sidebar_collapsed"] != true {
 		t.Errorf("Expected sidebar_collapsed true, got %v", updated.Preferences["sidebar_collapsed"])
@@ -877,8 +877,8 @@ func TestImageUpload_TooLarge(t *testing.T) {
 	handler := handlers.ImageUploadHandler("products")
 	handler(w, req)
 
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("Expected 400 for too-large image, got %d. Body: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("Expected 413 for too-large image, got %d. Body: %s", w.Code, w.Body.String())
 	}
 }
 

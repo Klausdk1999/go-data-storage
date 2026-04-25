@@ -258,7 +258,10 @@ func UserPreferencesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Ownership check: non-admin users can only access their own preferences
+	// Ownership check: non-admin users can only access their own preferences.
+	// NOTE: X-User-ID and X-User-Role are set by the auth middleware (RequireUserAuth)
+	// from validated JWT claims — they cannot be spoofed by clients because the middleware
+	// overwrites any client-provided values after JWT verification.
 	requestingUserID := r.Header.Get("X-User-ID")
 	requestingUserRole := r.Header.Get("X-User-Role")
 	if requestingUserRole != "admin" && requestingUserID != fmt.Sprintf("%d", userID) {
@@ -317,25 +320,18 @@ func putUserPreferences(w http.ResponseWriter, r *http.Request, userID uint) {
 		return
 	}
 
-	// Deep-merge: start with existing preferences, overwrite with incoming keys
-	merged := models.JSONB{}
-	if user.Preferences != nil {
-		for k, v := range user.Preferences {
-			merged[k] = v
-		}
-	}
-	for k, v := range incoming {
-		merged[k] = v
-	}
-
-	user.Preferences = merged
-	if err := db.GetDB().Save(&user).Error; err != nil {
+	// Full overwrite: the frontend always sends complete preference objects per
+	// top-level key (e.g. { "dashboard": { layout, widgets } }), so we simply
+	// replace the stored preferences. This avoids race conditions from
+	// concurrent read-modify-write cycles that a deep merge would introduce.
+	user.Preferences = incoming
+	if err := db.GetDB().Model(&user).Update("preferences", incoming).Error; err != nil {
 		log.Printf("Error saving preferences: %v", err)
 		http.Error(w, "Error saving preferences", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(merged)
+	json.NewEncoder(w).Encode(incoming)
 }
 

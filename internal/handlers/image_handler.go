@@ -2,13 +2,25 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
+	"strings"
 
 	"data-storage/internal/db"
 
 	"github.com/gorilla/mux"
 )
+
+// allowedImageTypes is the allowlist of MIME types accepted for image uploads.
+var allowedImageTypes = map[string]bool{
+	"image/jpeg": true,
+	"image/png":  true,
+	"image/gif":  true,
+	"image/webp": true,
+	"image/svg+xml": true,
+	"image/bmp":  true,
+}
 
 // tableForEntity maps URL entity names to database table names.
 func tableForEntity(entity string) string {
@@ -42,8 +54,9 @@ func ImageUploadHandler(entity string) http.HandlerFunc {
 
 		file, _, err := r.FormFile("image")
 		if err != nil {
-			if err.Error() == "http: request body too large" {
-				http.Error(w, "file too large (max 2MB)", http.StatusBadRequest)
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				http.Error(w, "file too large (max 2MB)", http.StatusRequestEntityTooLarge)
 				return
 			}
 			http.Error(w, "failed to read image: "+err.Error(), http.StatusBadRequest)
@@ -53,8 +66,9 @@ func ImageUploadHandler(entity string) http.HandlerFunc {
 
 		data, err := io.ReadAll(file)
 		if err != nil {
-			if err.Error() == "http: request body too large" {
-				http.Error(w, "file too large (max 2MB)", http.StatusBadRequest)
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				http.Error(w, "file too large (max 2MB)", http.StatusRequestEntityTooLarge)
 				return
 			}
 			http.Error(w, "failed to read image data: "+err.Error(), http.StatusInternalServerError)
@@ -62,6 +76,12 @@ func ImageUploadHandler(entity string) http.HandlerFunc {
 		}
 
 		contentType := http.DetectContentType(data)
+		// Validate that detected content type is an allowed image type
+		mimeBase := strings.SplitN(contentType, ";", 2)[0]
+		if !allowedImageTypes[mimeBase] {
+			http.Error(w, "invalid image type: "+mimeBase+". Allowed: jpeg, png, gif, webp, svg, bmp", http.StatusBadRequest)
+			return
+		}
 
 		result := db.DB.Table(table).Where("id = ?", id).Updates(map[string]interface{}{
 			"image":      data,
