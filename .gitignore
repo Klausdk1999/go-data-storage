@@ -33,3 +33,6 @@ go.work
 # OS
 .DS_Store
 Thumbs.db
+
+# Test coverage directory (from go test ./... with -coverprofile)
+coverage/
