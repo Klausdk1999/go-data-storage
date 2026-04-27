@@ -17,6 +17,9 @@ type User struct {
 	Type         string    `gorm:"column:type;default:'worker';check:type IN ('admin','worker')" json:"type,omitempty"`
 	Rfid         string    `gorm:"uniqueIndex" json:"rfid,omitempty"`
 	IsActive     bool      `gorm:"default:true" json:"is_active,omitempty"`
+	Preferences  JSONB     `gorm:"type:jsonb;default:'{}'" json:"preferences,omitempty"`
+	Image        []byte    `json:"-" gorm:"type:bytea"`
+	ImageType    string    `json:"-" gorm:"type:varchar(50)"`
 	Devices      []Device  `gorm:"foreignKey:UserID" json:"devices,omitempty"`
 	CreatedAt    time.Time `json:"created_at,omitempty"`
 	UpdatedAt    time.Time `json:"updated_at,omitempty"`
@@ -49,6 +52,8 @@ type Device struct {
 	User        *User     `gorm:"foreignKey:UserID" json:"user,omitempty"`
 	AuthToken   string    `gorm:"uniqueIndex;not null" json:"auth_token,omitempty"`
 	IsActive    bool      `gorm:"default:true" json:"is_active,omitempty"`
+	Image       []byte    `json:"-" gorm:"type:bytea"`
+	ImageType   string    `json:"-" gorm:"type:varchar(50)"`
 	Signals     []Signal  `gorm:"foreignKey:DeviceID" json:"signals,omitempty"`
 	CreatedAt   time.Time `json:"created_at,omitempty"`
 	UpdatedAt   time.Time `json:"updated_at,omitempty"`
@@ -122,6 +127,8 @@ type Product struct {
 	Category    string            `json:"category,omitempty"`
 	IsActive    bool              `gorm:"default:true" json:"is_active"`
 	Metadata    JSONB             `gorm:"type:jsonb" json:"metadata,omitempty"`
+	Image       []byte            `json:"-" gorm:"type:bytea"`
+	ImageType   string            `json:"-" gorm:"type:varchar(50)"`
 	BOM         []BillOfMaterials `gorm:"foreignKey:ProductID" json:"bom,omitempty"`
 	CreatedAt   time.Time         `json:"created_at,omitempty"`
 	UpdatedAt   time.Time         `json:"updated_at,omitempty"`
